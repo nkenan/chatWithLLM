@@ -24,9 +24,9 @@ A powerful, dependency-light bash script for interacting with multiple Large Lan
 
 1. Download the script:
 ```bash
-wget https://raw.githubusercontent.com/your-repo/chatWithLLM.sh
+wget https://raw.githubusercontent.com/nkenan/chatWithLLM/main/chatWithLLM.sh
 # or
-curl -O https://raw.githubusercontent.com/your-repo/chatWithLLM.sh
+curl -O https://raw.githubusercontent.com/nkenan/chatWithLLM/main/chatWithLLM.sh
 ```
 
 2. Make it executable:
