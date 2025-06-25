@@ -222,197 +222,32 @@ process_input_files() {
                 processed_content+=$(cat "$file")
                 ;;
             "image")
-                # For images, we'll return the file path for the API call to handle
-                processed_content+="\n\n--- Image file: $file ---\n"
-                processed_content+="[IMAGE:$file]"
+                # Check if we can handle images
+                if command -v base64 >/dev/null 2>&1; then
+                    processed_content+="\n\n--- Image file: $file ---\n"
+                    processed_content+="[IMAGE:$file]"
+                else
+                    echo "Warning: Image files not supported without base64 command. Skipping: $file" >&2
+                fi
                 ;;
             "pdf")
-                # Basic PDF text extraction (requires pdftotext if available)
                 if command -v pdftotext >/dev/null 2>&1; then
                     processed_content+="\n\n--- Content from $file ---\n"
                     processed_content+=$(pdftotext "$file" - 2>/dev/null || echo "Could not extract text from PDF")
                 else
-                    RESPONSE_ERROR="PDF support requires pdftotext (poppler-utils package)"
-                    return 1
+                    echo "Warning: PDF support requires pdftotext. Skipping: $file" >&2
                 fi
                 ;;
             *)
-                RESPONSE_ERROR="Unsupported file type: $file"
-                return 1
+                echo "Warning: Unsupported file type, treating as text: $file" >&2
+                processed_content+="\n\n--- Content from $file ---\n"
+                processed_content+=$(cat "$file")
                 ;;
         esac
     done
     
     RESPONSE_CONTENT="$processed_content"
     return 0
-}
-
-# Function: shell_base64_encode - Improved Version
-# Description: Pure shell implementation of base64 encoding (no external dependencies)
-# Parameters:
-#   $1 - file path to encode
-# Returns: base64 string via echo
-shell_base64_encode() {
-    local file_path="$1"
-    
-    if [[ ! -f "$file_path" ]]; then
-        echo ""
-        return 1
-    fi
-    
-    # Base64 alphabet
-    local b64_chars="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-    
-    # Read file as binary using od (octal dump)
-    local bytes
-    bytes=$(od -An -tx1 -v "$file_path" 2>/dev/null | tr -d ' \n' | tr '[:lower:]' '[:upper:]')
-    
-    if [[ -z "$bytes" ]]; then
-        echo ""
-        return 1
-    fi
-    
-    local result=""
-    local i=0
-    local len=${#bytes}
-    
-    # Process in groups of 6 hex characters (3 bytes = 24 bits)
-    while [[ $i -lt $len ]]; do
-        local hex_group=""
-        local byte_count=0
-        
-        # Collect up to 3 bytes (6 hex chars)
-        for ((j=0; j<6 && i+j<len; j+=2)); do
-            hex_group+="${bytes:$((i+j)):2}"
-            ((byte_count++))
-        done
-        
-        # Pad with zeros if needed
-        while [[ ${#hex_group} -lt 6 ]]; do
-            hex_group+="00"
-        done
-        
-        # Convert hex to decimal
-        local byte1=$((0x${hex_group:0:2}))
-        local byte2=$((0x${hex_group:2:2}))
-        local byte3=$((0x${hex_group:4:2}))
-        
-        # Combine into 24-bit number
-        local combined=$((byte1 * 65536 + byte2 * 256 + byte3))
-        
-        # Extract 4 groups of 6 bits each
-        local b64_1=$(((combined >> 18) & 63))
-        local b64_2=$(((combined >> 12) & 63))
-        local b64_3=$(((combined >> 6) & 63))
-        local b64_4=$((combined & 63))
-        
-        # Convert to base64 characters
-        result+="${b64_chars:$b64_1:1}${b64_chars:$b64_2:1}"
-        
-        if [[ $byte_count -gt 1 ]]; then
-            result+="${b64_chars:$b64_3:1}"
-        else
-            result+="="
-        fi
-        
-        if [[ $byte_count -gt 2 ]]; then
-            result+="${b64_chars:$b64_4:1}"
-        else
-            result+="="
-        fi
-        
-        i=$((i + byte_count * 2))
-    done
-    
-    echo "$result"
-}
-
-# Alternative: Even simpler base64 implementation using printf
-# This version is more portable and easier to understand
-shell_base64_encode_simple() {
-    local file_path="$1"
-    
-    if [[ ! -f "$file_path" ]]; then
-        echo ""
-        return 1
-    fi
-    
-    # Base64 alphabet
-    local b64="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-    local result=""
-    local padding=""
-    
-    # Read file byte by byte using od
-    local bytes
-    bytes=$(od -An -td1 -v "$file_path" 2>/dev/null | tr -d ' \n')
-    
-    if [[ -z "$bytes" ]]; then
-        echo ""
-        return 1
-    fi
-    
-    # Convert space-separated decimal bytes to array
-    local byte_array=()
-    local temp_byte=""
-    
-    for ((i=0; i<${#bytes}; i++)); do
-        local char="${bytes:$i:1}"
-        if [[ "$char" =~ [0-9] ]]; then
-            temp_byte+="$char"
-        else
-            if [[ -n "$temp_byte" ]]; then
-                byte_array+=("$temp_byte")
-                temp_byte=""
-            fi
-        fi
-    done
-    
-    # Add last byte if exists
-    if [[ -n "$temp_byte" ]]; then
-        byte_array+=("$temp_byte")
-    fi
-    
-    # Process bytes in groups of 3
-    for ((i=0; i<${#byte_array[@]}; i+=3)); do
-        local b1=${byte_array[$i]:-0}
-        local b2=${byte_array[$((i+1))]:-0}
-        local b3=${byte_array[$((i+2))]:-0}
-        
-        # Check how many actual bytes we have
-        local actual_bytes=1
-        if [[ $((i+1)) -lt ${#byte_array[@]} ]]; then
-            actual_bytes=2
-        fi
-        if [[ $((i+2)) -lt ${#byte_array[@]} ]]; then
-            actual_bytes=3
-        fi
-        
-        # Combine 3 bytes into 24-bit number
-        local combined=$((b1 * 65536 + b2 * 256 + b3))
-        
-        # Extract 4 base64 indices
-        local idx1=$(((combined >> 18) & 63))
-        local idx2=$(((combined >> 12) & 63))
-        local idx3=$(((combined >> 6) & 63))
-        local idx4=$((combined & 63))
-        
-        # Add base64 characters
-        result+="${b64:$idx1:1}${b64:$idx2:1}"
-        
-        if [[ $actual_bytes -gt 1 ]]; then
-            result+="${b64:$idx3:1}"
-        else
-            result+="="
-        fi
-        
-        if [[ $actual_bytes -gt 2 ]]; then
-            result+="${b64:$idx4:1}"
-        else
-            result+="="
-        fi
-    done
-    
-    echo "$result"
 }
 
 # Function: encode_image_base64 - Updated
@@ -428,13 +263,16 @@ encode_image_base64() {
         return 1
     fi
     
-    # Try native base64 first, then fallback to shell implementation
+    # Try native base64 first
     if command -v base64 >/dev/null 2>&1; then
-        base64 -w 0 "$image_path" 2>/dev/null
-    else
-        # Use the simpler shell implementation
-        shell_base64_encode_simple "$image_path"
+        base64 -w 0 "$image_path" 2>/dev/null || base64 "$image_path" 2>/dev/null
+        return $?
     fi
+    
+    # If base64 not available, return empty and warn
+    echo "Warning: base64 not available, cannot encode image: $image_path" >&2
+    echo ""
+    return 1
 }
 
 
@@ -1193,7 +1031,7 @@ check_dependencies() {
     local missing_deps=()
     
     # Check for required commands (base64 removed from required list)
-    for cmd in curl sed grep od; do
+    for cmd in curl sed grep; do
         if ! command -v "$cmd" >/dev/null 2>&1; then
             missing_deps+=("$cmd")
         fi
