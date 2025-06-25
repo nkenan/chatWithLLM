@@ -199,6 +199,7 @@ process_input_files() {
     local files="$1"
     local processed_content=""
     local total_size=0
+    local max_file_size=10485760  # 10MB limit per file
     
     RESPONSE_ERROR=""
     
@@ -219,11 +220,11 @@ process_input_files() {
         file_size=$(wc -c < "$file" 2>/dev/null || echo "0")
         total_size=$((total_size + file_size))
         
-        # Warn if single file is very large (>1MB)
-        if [[ $file_size -gt 1048576 ]]; then
-            # Use simple division instead of bc
+        # Skip files that are too large
+        if [[ $file_size -gt $max_file_size ]]; then
             local size_mb=$((file_size / 1048576))
-            echo "Warning: Large file detected: $file (~${size_mb}MB)" >&2
+            echo "Warning: File too large, skipping: $file (~${size_mb}MB)" >&2
+            continue
         fi
         
         local file_type
@@ -232,7 +233,12 @@ process_input_files() {
         case "$file_type" in
             "text")
                 processed_content+="\n\n--- Content from $file ---\n"
-                processed_content+=$(cat "$file")
+                # Clean the content to remove problematic characters
+                if command -v iconv >/dev/null 2>&1; then
+                    processed_content+=$(iconv -f UTF-8 -t UTF-8//IGNORE "$file" 2>/dev/null || cat "$file")
+                else
+                    processed_content+=$(cat "$file")
+                fi
                 ;;
             "image")
                 # Check if we can handle images
@@ -259,10 +265,13 @@ process_input_files() {
         esac
     done
     
-    # Warn if total content is very large
-    if [[ $total_size -gt 2097152 ]]; then  # 2MB
-        local total_mb=$((total_size / 1048576))
-        echo "Warning: Very large total content (~${total_mb}MB) - API may reject or truncate" >&2
+    # Check total content size and warn/truncate if needed
+    if [[ $total_size -gt 20971520 ]]; then  # 20MB total limit
+        echo "Warning: Total content very large, may be truncated by API" >&2
+        # Truncate content if it's extremely large
+        if [[ ${#processed_content} -gt 100000 ]]; then
+            processed_content="${processed_content:0:100000}\n\n... [Content truncated due to size limits] ..."
+        fi
     fi
     
     RESPONSE_CONTENT="$processed_content"
@@ -539,8 +548,24 @@ make_api_call() {
     temp_response=$(mktemp)
     temp_request=$(mktemp)
     
-    # Write request body to temp file instead of passing as argument
-    echo "$request_body" > "$temp_request"
+    # Write request body to temp file with proper encoding
+    printf '%s' "$request_body" > "$temp_request"
+    
+    # Validate JSON before sending
+    if command -v python3 >/dev/null 2>&1; then
+        if ! python3 -c "import json; json.load(open('$temp_request'))" 2>/dev/null; then
+            echo "Error: Generated invalid JSON request body" >&2
+            if [[ "${DEBUG:-false}" == "true" ]]; then
+                echo "Request body:" >&2
+                head -c 1000 "$temp_request" >&2
+                echo "..." >&2
+            fi
+            rm -f "$temp_response" "$temp_request"
+            RESPONSE_SUCCESS="false"
+            RESPONSE_ERROR="Invalid JSON in request body"
+            return 1
+        fi
+    fi
     
     local curl_args=()
     curl_args+=("-s" "-w" "%{http_code}" "-X" "POST")
@@ -561,8 +586,8 @@ make_api_call() {
             ;;
     esac
     
-    curl_args+=("-H" "Content-Type: application/json")
-    curl_args+=("--data-binary" "@$temp_request")  # Read from file instead of -d
+    curl_args+=("-H" "Content-Type: application/json; charset=utf-8")
+    curl_args+=("--data-binary" "@$temp_request")
     curl_args+=("$url")
     curl_args+=("-o" "$temp_response")
     
@@ -966,7 +991,7 @@ save_output() {
 escape_json() {
     local input="$1"
     
-    # Use printf and sed for robust escaping
+    # More robust escaping for all control characters
     printf '%s' "$input" | sed '
         s/\\/\\\\/g
         s/"/\\"/g
@@ -975,7 +1000,25 @@ escape_json() {
         s/\x0D/\\r/g
         s/\x0C/\\f/g
         s/\x08/\\b/g
-    ' | tr -d '\000-\007\013\014\016-\037\177-\237'
+    ' | LC_ALL=C sed 's/[\x00-\x1F\x7F-\x9F]/\\u0000/g' | \
+    python3 -c "
+import sys, json
+try:
+    content = sys.stdin.read()
+    print(json.dumps(content)[1:-1], end='')
+except:
+    # Fallback: remove problematic characters
+    content = ''.join(c for c in sys.stdin.read() if ord(c) >= 32 and ord(c) != 127)
+    print(json.dumps(content)[1:-1], end='')
+" 2>/dev/null || {
+        # Fallback if Python not available - more aggressive cleaning
+        printf '%s' "$input" | tr -d '\000-\010\013\014\016-\037\177-\237' | sed '
+            s/\\/\\\\/g
+            s/"/\\"/g
+            s/\t/\\t/g
+            s/$/\\n/g
+        ' | tr -d '\n' | sed 's/\\n$//'
+    }
 }
 
 # Function: extract_json_value
