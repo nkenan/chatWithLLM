@@ -199,7 +199,8 @@ process_input_files() {
     local files="$1"
     local processed_content=""
     local total_size=0
-    local max_file_size=10485760  # 10MB limit per file
+    local max_single_file=5242880  # 5MB per file
+    local max_total_size=10485760  # 10MB total
     
     RESPONSE_ERROR=""
     
@@ -215,16 +216,23 @@ process_input_files() {
             return 1
         fi
         
-        # Check file size (in bytes)
+        # Check file size
         local file_size
         file_size=$(wc -c < "$file" 2>/dev/null || echo "0")
-        total_size=$((total_size + file_size))
         
-        # Skip files that are too large
-        if [[ $file_size -gt $max_file_size ]]; then
+        # Skip very large files
+        if [[ $file_size -gt $max_single_file ]]; then
             local size_mb=$((file_size / 1048576))
             echo "Warning: File too large, skipping: $file (~${size_mb}MB)" >&2
             continue
+        fi
+        
+        total_size=$((total_size + file_size))
+        
+        # Check total size limit
+        if [[ $total_size -gt $max_total_size ]]; then
+            echo "Warning: Total file size limit exceeded, stopping at: $file" >&2
+            break
         fi
         
         local file_type
@@ -233,15 +241,29 @@ process_input_files() {
         case "$file_type" in
             "text")
                 processed_content+="\n\n--- Content from $file ---\n"
-                # Clean the content to remove problematic characters
+                
+                # Read and clean file content
+                local file_content
                 if command -v iconv >/dev/null 2>&1; then
-                    processed_content+=$(iconv -f UTF-8 -t UTF-8//IGNORE "$file" 2>/dev/null || cat "$file")
+                    # Try to convert to clean UTF-8
+                    file_content=$(iconv -f UTF-8 -t UTF-8//IGNORE "$file" 2>/dev/null || \
+                                  iconv -c -f UTF-8 -t UTF-8 "$file" 2>/dev/null || \
+                                  cat "$file")
                 else
-                    processed_content+=$(cat "$file")
+                    file_content=$(cat "$file")
                 fi
+                
+                # Additional cleaning for problematic characters
+                file_content=$(printf '%s' "$file_content" | tr -d '\000-\010\013\014\016-\037\177-\237' 2>/dev/null || printf '%s' "$file_content")
+                
+                # Truncate very long files
+                if [[ ${#file_content} -gt 50000 ]]; then
+                    file_content="${file_content:0:50000}\n... [File truncated due to length] ..."
+                fi
+                
+                processed_content+="$file_content"
                 ;;
             "image")
-                # Check if we can handle images
                 if command -v base64 >/dev/null 2>&1; then
                     processed_content+="\n\n--- Image file: $file ---\n"
                     processed_content+="[IMAGE:$file]"
@@ -252,7 +274,11 @@ process_input_files() {
             "pdf")
                 if command -v pdftotext >/dev/null 2>&1; then
                     processed_content+="\n\n--- Content from $file ---\n"
-                    processed_content+=$(pdftotext "$file" - 2>/dev/null || echo "Could not extract text from PDF")
+                    local pdf_content
+                    pdf_content=$(pdftotext "$file" - 2>/dev/null || echo "Could not extract text from PDF")
+                    # Clean PDF content
+                    pdf_content=$(printf '%s' "$pdf_content" | tr -d '\000-\010\013\014\016-\037\177-\237' 2>/dev/null || printf '%s' "$pdf_content")
+                    processed_content+="$pdf_content"
                 else
                     echo "Warning: PDF support requires pdftotext. Skipping: $file" >&2
                 fi
@@ -260,18 +286,18 @@ process_input_files() {
             *)
                 echo "Warning: Unsupported file type, treating as text: $file" >&2
                 processed_content+="\n\n--- Content from $file ---\n"
-                processed_content+=$(cat "$file")
+                local unknown_content
+                unknown_content=$(cat "$file")
+                unknown_content=$(printf '%s' "$unknown_content" | tr -d '\000-\010\013\014\016-\037\177-\237' 2>/dev/null || printf '%s' "$unknown_content")
+                processed_content+="$unknown_content"
                 ;;
         esac
     done
     
-    # Check total content size and warn/truncate if needed
-    if [[ $total_size -gt 20971520 ]]; then  # 20MB total limit
-        echo "Warning: Total content very large, may be truncated by API" >&2
-        # Truncate content if it's extremely large
-        if [[ ${#processed_content} -gt 100000 ]]; then
-            processed_content="${processed_content:0:100000}\n\n... [Content truncated due to size limits] ..."
-        fi
+    # Final size check and truncation
+    if [[ ${#processed_content} -gt 80000 ]]; then
+        echo "Warning: Content truncated due to size (${#processed_content} chars)" >&2
+        processed_content="${processed_content:0:80000}\n\n... [Content truncated for API limits] ..."
     fi
     
     RESPONSE_CONTENT="$processed_content"
@@ -551,18 +577,31 @@ make_api_call() {
     # Write request body to temp file with proper encoding
     printf '%s' "$request_body" > "$temp_request"
     
-    # Validate JSON before sending
+    # Validate JSON and check for encoding issues
     if command -v python3 >/dev/null 2>&1; then
-        if ! python3 -c "import json; json.load(open('$temp_request'))" 2>/dev/null; then
+        if ! python3 -c "
+import sys
+import json
+try:
+    with open('$temp_request', 'r', encoding='utf-8', errors='ignore') as f:
+        data = f.read()
+    # Ensure valid UTF-8
+    data = data.encode('utf-8', 'ignore').decode('utf-8')
+    parsed = json.loads(data)
+    print('JSON validation passed', file=sys.stderr)
+except Exception as e:
+    print(f'JSON validation failed: {e}', file=sys.stderr)
+    sys.exit(1)
+" 2>/dev/null; then
             echo "Error: Generated invalid JSON request body" >&2
-            if [[ "${DEBUG:-false}" == "true" ]]; then
-                echo "Request body:" >&2
+            if [[ "${debug:-false}" == "true" ]]; then
+                echo "Request body preview:" >&2
                 head -c 1000 "$temp_request" >&2
                 echo "..." >&2
             fi
             rm -f "$temp_response" "$temp_request"
             RESPONSE_SUCCESS="false"
-            RESPONSE_ERROR="Invalid JSON in request body"
+            RESPONSE_ERROR="Invalid JSON in request body - encoding issues"
             return 1
         fi
     fi
@@ -983,6 +1022,25 @@ save_output() {
 # UTILITY FUNCTIONS
 # ============================================================================
 
+# Function: clean_utf8_content
+# Description: Clean content to ensure valid UTF-8 encoding
+# Parameters:
+#   $1 - input content
+# Returns: Cleaned content via echo
+clean_utf8_content() {
+    local input="$1"
+    
+    # Try iconv first for proper UTF-8 cleaning
+    if command -v iconv >/dev/null 2>&1; then
+        printf '%s' "$input" | iconv -f UTF-8 -t UTF-8//IGNORE 2>/dev/null || \
+        printf '%s' "$input" | iconv -c -f UTF-8 -t UTF-8 2>/dev/null || \
+        printf '%s' "$input" | tr -cd '\11\12\15\40-\176\200-\377'
+    else
+        # Fallback: remove problematic characters
+        printf '%s' "$input" | tr -cd '\11\12\15\40-\176\200-\377'
+    fi
+}
+
 # Function: escape_json
 # Description: Escape string for JSON inclusion
 # Parameters:
@@ -991,34 +1049,47 @@ save_output() {
 escape_json() {
     local input="$1"
     
-    # More robust escaping for all control characters
-    printf '%s' "$input" | sed '
-        s/\\/\\\\/g
-        s/"/\\"/g
-        s/\x09/\\t/g
-        s/\x0A/\\n/g
-        s/\x0D/\\r/g
-        s/\x0C/\\f/g
-        s/\x08/\\b/g
-    ' | LC_ALL=C sed 's/[\x00-\x1F\x7F-\x9F]/\\u0000/g' | \
-    python3 -c "
-import sys, json
+    # First clean the UTF-8 content
+    local cleaned_input
+    cleaned_input=$(clean_utf8_content "$input")
+    
+    # Try Python approach first for robust JSON escaping
+    if command -v python3 >/dev/null 2>&1; then
+        printf '%s' "$cleaned_input" | python3 -c "
+import sys
+import json
 try:
     content = sys.stdin.read()
-    print(json.dumps(content)[1:-1], end='')
-except:
-    # Fallback: remove problematic characters
-    content = ''.join(c for c in sys.stdin.read() if ord(c) >= 32 and ord(c) != 127)
-    print(json.dumps(content)[1:-1], end='')
-" 2>/dev/null || {
-        # Fallback if Python not available - more aggressive cleaning
-        printf '%s' "$input" | tr -d '\000-\010\013\014\016-\037\177-\237' | sed '
+    # Ensure content is valid UTF-8
+    content = content.encode('utf-8', 'ignore').decode('utf-8')
+    # Remove or replace problematic characters
+    content = ''.join(c for c in content if ord(c) >= 32 or c in '\t\n\r')
+    # Use json.dumps to properly escape, then remove outer quotes
+    escaped = json.dumps(content, ensure_ascii=False)[1:-1]
+    print(escaped, end='')
+except Exception as e:
+    # Fallback: basic cleaning
+    content = sys.stdin.read()
+    content = ''.join(c for c in content if 32 <= ord(c) <= 126 or c in '\t\n\r')
+    content = content.replace('\\\\', '\\\\\\\\').replace('\"', '\\\\\"')
+    print(content, end='')
+" 2>/dev/null
+    else
+        # Fallback bash implementation
+        printf '%s' "$cleaned_input" | sed '
             s/\\/\\\\/g
             s/"/\\"/g
             s/\t/\\t/g
-            s/$/\\n/g
-        ' | tr -d '\n' | sed 's/\\n$//'
-    }
+            s/\r/\\r/g
+        ' | awk '
+        {
+            # Replace newlines with \n
+            gsub(/\n/, "\\n")
+            # Remove other control characters
+            gsub(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/, "")
+            print
+        }' | tr -d '\n'
+    fi
 }
 
 # Function: extract_json_value
