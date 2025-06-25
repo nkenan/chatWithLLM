@@ -966,8 +966,16 @@ save_output() {
 escape_json() {
     local input="$1"
     
-    # Escape backslashes, quotes, and control characters
-    echo "$input" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g; s/\n/\\n/g; s/\r/\\r/g'
+    # Use printf and sed for robust escaping
+    printf '%s' "$input" | sed '
+        s/\\/\\\\/g
+        s/"/\\"/g
+        s/\x09/\\t/g
+        s/\x0A/\\n/g
+        s/\x0D/\\r/g
+        s/\x0C/\\f/g
+        s/\x08/\\b/g
+    ' | tr -d '\000-\007\013\014\016-\037\177-\237'
 }
 
 # Function: extract_json_value
