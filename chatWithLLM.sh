@@ -198,6 +198,7 @@ validate_provider() {
 process_input_files() {
     local files="$1"
     local processed_content=""
+    local total_size=0
     
     RESPONSE_ERROR=""
     
@@ -211,6 +212,18 @@ process_input_files() {
         if [[ ! -f "$file" ]]; then
             RESPONSE_ERROR="File not found: $file"
             return 1
+        fi
+        
+        # Check file size (in bytes)
+        local file_size
+        file_size=$(wc -c < "$file" 2>/dev/null || echo "0")
+        total_size=$((total_size + file_size))
+        
+        # Warn if single file is very large (>1MB)
+        if [[ $file_size -gt 1048576 ]]; then
+            # Use simple division instead of bc
+            local size_mb=$((file_size / 1048576))
+            echo "Warning: Large file detected: $file (~${size_mb}MB)" >&2
         fi
         
         local file_type
@@ -245,6 +258,12 @@ process_input_files() {
                 ;;
         esac
     done
+    
+    # Warn if total content is very large
+    if [[ $total_size -gt 2097152 ]]; then  # 2MB
+        local total_mb=$((total_size / 1048576))
+        echo "Warning: Very large total content (~${total_mb}MB) - API may reject or truncate" >&2
+    fi
     
     RESPONSE_CONTENT="$processed_content"
     return 0
@@ -299,12 +318,8 @@ detect_file_type() {
             echo "pdf"
             ;;
         *)
-            # Try to detect by file content
-            if file "$file_path" 2>/dev/null | grep -q "text"; then
-                echo "text"
-            else
-                echo "unknown"
-            fi
+            # Fallback: treat as text instead of using 'file' command
+            echo "text"
             ;;
     esac
 }
@@ -519,9 +534,13 @@ make_api_call() {
     local url
     url=$(get_provider_url "$provider" "$model")
     
-    # Make the API call
-    local temp_file
-    temp_file=$(mktemp)
+    # Create temporary files
+    local temp_response temp_request
+    temp_response=$(mktemp)
+    temp_request=$(mktemp)
+    
+    # Write request body to temp file instead of passing as argument
+    echo "$request_body" > "$temp_request"
     
     local curl_args=()
     curl_args+=("-s" "-w" "%{http_code}" "-X" "POST")
@@ -543,15 +562,17 @@ make_api_call() {
     esac
     
     curl_args+=("-H" "Content-Type: application/json")
-    curl_args+=("-d" "$request_body")
+    curl_args+=("--data-binary" "@$temp_request")  # Read from file instead of -d
     curl_args+=("$url")
-    curl_args+=("-o" "$temp_file")
+    curl_args+=("-o" "$temp_response")
     
     local http_code
     http_code=$(curl "${curl_args[@]}")
     
-    RESPONSE_RAW=$(cat "$temp_file")
-    rm -f "$temp_file"
+    RESPONSE_RAW=$(cat "$temp_response")
+    
+    # Cleanup
+    rm -f "$temp_response" "$temp_request"
     
     # Check if http_code is a valid number
     if [[ "$http_code" =~ ^[0-9]+$ ]] && [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
