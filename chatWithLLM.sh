@@ -1,7 +1,7 @@
 #!/bin/bash
-# chatWithLLM.sh - Universal LLM CLI Interface
+# chatWithLLM.sh - Universal LLM CLI Interface (Minimal Version)
 # Supports: OpenAI, Google (Gemini), Meta (Llama), Mistral, DeepSeek, Anthropic
-# Dependencies: curl, sed, grep (no jq, awk, or bc)
+# Dependencies: curl, sed, grep only
 
 set -euo pipefail
 
@@ -35,7 +35,7 @@ RESPONSE_USAGE=""
 RESPONSE_RAW=""
 RESPONSE_FILE=""
 
-# Function: init_config - Updated
+# Function: init_config
 # Description: Initialize configuration file with default model and API keys
 # Parameters: None
 # Returns: 0 on success, 1 on failure
@@ -76,7 +76,7 @@ META_API_KEY=
     return 0
 }
 
-# Function: load_config - Updated
+# Function: load_config
 # Description: Load API keys and default model from configuration file
 # Parameters: None
 # Returns: 0 on success, 1 on failure
@@ -150,7 +150,7 @@ get_api_key() {
 # PROVIDER DETECTION AND VALIDATION
 # ============================================================================
 
-# Function: parse_model_string - Simplified
+# Function: parse_model_string
 # Description: Parse model string in format "provider:model"
 # Parameters:
 #   $1 - model string (e.g., "openai:gpt-4", "anthropic:claude-3-opus")
@@ -190,11 +190,11 @@ validate_provider() {
 # ============================================================================
 
 # Function: process_input_files
-# Description: Process multiple input files, including images for vision models
+# Description: Process multiple text files only
 # Parameters:
 #   $1 - comma-separated list of file paths
 # Returns: Processed content via RESPONSE_CONTENT, error via RESPONSE_ERROR
-# Supports: text files, images (for vision models), PDFs (basic text extraction)
+# Supports: text files only
 process_input_files() {
     local files="$1"
     local processed_content=""
@@ -235,63 +235,21 @@ process_input_files() {
             break
         fi
         
-        local file_type
-        file_type=$(detect_file_type "$file")
+        processed_content+="\n\n--- Content from $file ---\n"
         
-        case "$file_type" in
-            "text")
-                processed_content+="\n\n--- Content from $file ---\n"
-                
-                # Read and clean file content
-                local file_content
-                if command -v iconv >/dev/null 2>&1; then
-                    # Try to convert to clean UTF-8
-                    file_content=$(iconv -f UTF-8 -t UTF-8//IGNORE "$file" 2>/dev/null || \
-                                  iconv -c -f UTF-8 -t UTF-8 "$file" 2>/dev/null || \
-                                  cat "$file")
-                else
-                    file_content=$(cat "$file")
-                fi
-                
-                # Additional cleaning for problematic characters
-                file_content=$(printf '%s' "$file_content" | tr -d '\000-\010\013\014\016-\037\177-\237' 2>/dev/null || printf '%s' "$file_content")
-                
-                # Truncate very long files
-                if [[ ${#file_content} -gt 50000 ]]; then
-                    file_content="${file_content:0:50000}\n... [File truncated due to length] ..."
-                fi
-                
-                processed_content+="$file_content"
-                ;;
-            "image")
-                if command -v base64 >/dev/null 2>&1; then
-                    processed_content+="\n\n--- Image file: $file ---\n"
-                    processed_content+="[IMAGE:$file]"
-                else
-                    echo "Warning: Image files not supported without base64 command. Skipping: $file" >&2
-                fi
-                ;;
-            "pdf")
-                if command -v pdftotext >/dev/null 2>&1; then
-                    processed_content+="\n\n--- Content from $file ---\n"
-                    local pdf_content
-                    pdf_content=$(pdftotext "$file" - 2>/dev/null || echo "Could not extract text from PDF")
-                    # Clean PDF content
-                    pdf_content=$(printf '%s' "$pdf_content" | tr -d '\000-\010\013\014\016-\037\177-\237' 2>/dev/null || printf '%s' "$pdf_content")
-                    processed_content+="$pdf_content"
-                else
-                    echo "Warning: PDF support requires pdftotext. Skipping: $file" >&2
-                fi
-                ;;
-            *)
-                echo "Warning: Unsupported file type, treating as text: $file" >&2
-                processed_content+="\n\n--- Content from $file ---\n"
-                local unknown_content
-                unknown_content=$(cat "$file")
-                unknown_content=$(printf '%s' "$unknown_content" | tr -d '\000-\010\013\014\016-\037\177-\237' 2>/dev/null || printf '%s' "$unknown_content")
-                processed_content+="$unknown_content"
-                ;;
-        esac
+        # Read file content
+        local file_content
+        file_content=$(cat "$file")
+        
+        # Basic cleaning - remove null bytes and other problematic characters
+        file_content=$(printf '%s' "$file_content" | tr -d '\000-\010\013\014\016-\037\177')
+        
+        # Truncate very long files
+        if [[ ${#file_content} -gt 50000 ]]; then
+            file_content="${file_content:0:50000}\n... [File truncated due to length] ..."
+        fi
+        
+        processed_content+="$file_content"
     done
     
     # Final size check and truncation
@@ -302,61 +260,6 @@ process_input_files() {
     
     RESPONSE_CONTENT="$processed_content"
     return 0
-}
-
-# Function: encode_image_base64 - Updated
-# Description: Encode image file to base64 for vision API calls
-# Parameters:
-#   $1 - image file path
-# Returns: base64 string via echo
-encode_image_base64() {
-    local image_path="$1"
-    
-    if [[ ! -f "$image_path" ]]; then
-        echo ""
-        return 1
-    fi
-    
-    # Try native base64 first
-    if command -v base64 >/dev/null 2>&1; then
-        base64 -w 0 "$image_path" 2>/dev/null || base64 "$image_path" 2>/dev/null
-        return $?
-    fi
-    
-    # If base64 not available, return empty and warn
-    echo "Warning: base64 not available, cannot encode image: $image_path" >&2
-    echo ""
-    return 1
-}
-
-
-# Function: detect_file_type
-# Description: Detect file type (text, image, etc.)
-# Parameters:
-#   $1 - file path
-# Returns: file type string via echo (text, image, pdf, unknown)
-detect_file_type() {
-    local file_path="$1"
-    
-    # Get file extension
-    local ext="${file_path##*.}"
-    ext=$(echo "$ext" | tr '[:upper:]' '[:lower:]')
-    
-    case "$ext" in
-        txt|md|markdown|rst|org|tex|py|js|html|css|json|xml|yaml|yml|sh|bash|zsh|fish|c|cpp|h|hpp|java|go|rs|php|rb|pl|swift|kt|scala|clj)
-            echo "text"
-            ;;
-        jpg|jpeg|png|gif|bmp|webp|svg)
-            echo "image"
-            ;;
-        pdf)
-            echo "pdf"
-            ;;
-        *)
-            # Fallback: treat as text instead of using 'file' command
-            echo "text"
-            ;;
-    esac
 }
 
 # ============================================================================
@@ -574,37 +477,8 @@ make_api_call() {
     temp_response=$(mktemp)
     temp_request=$(mktemp)
     
-    # Write request body to temp file with proper encoding
+    # Write request body to temp file
     printf '%s' "$request_body" > "$temp_request"
-    
-    # Validate JSON and check for encoding issues
-    if command -v python3 >/dev/null 2>&1; then
-        if ! python3 -c "
-import sys
-import json
-try:
-    with open('$temp_request', 'r', encoding='utf-8', errors='ignore') as f:
-        data = f.read()
-    # Ensure valid UTF-8
-    data = data.encode('utf-8', 'ignore').decode('utf-8')
-    parsed = json.loads(data)
-    print('JSON validation passed', file=sys.stderr)
-except Exception as e:
-    print(f'JSON validation failed: {e}', file=sys.stderr)
-    sys.exit(1)
-" 2>/dev/null; then
-            echo "Error: Generated invalid JSON request body" >&2
-            if [[ "${debug:-false}" == "true" ]]; then
-                echo "Request body preview:" >&2
-                head -c 1000 "$temp_request" >&2
-                echo "..." >&2
-            fi
-            rm -f "$temp_response" "$temp_request"
-            RESPONSE_SUCCESS="false"
-            RESPONSE_ERROR="Invalid JSON in request body - encoding issues"
-            return 1
-        fi
-    fi
     
     local curl_args=()
     curl_args+=("-s" "-w" "%{http_code}" "-X" "POST")
@@ -625,7 +499,7 @@ except Exception as e:
             ;;
     esac
     
-    curl_args+=("-H" "Content-Type: application/json; charset=utf-8")
+    curl_args+=("-H" "Content-Type: application/json")
     curl_args+=("--data-binary" "@$temp_request")
     curl_args+=("$url")
     curl_args+=("-o" "$temp_response")
@@ -645,21 +519,6 @@ except Exception as e:
         RESPONSE_SUCCESS="false"
         RESPONSE_ERROR="HTTP $http_code: $RESPONSE_RAW"
     fi
-}
-
-# Function: get_provider_headers
-# Description: Get provider-specific HTTP headers
-# Parameters:
-#   $1 - provider name
-#   $2 - API key
-# Returns: curl header arguments via echo
-get_provider_headers() {
-    local provider="$1"
-    local api_key="$2"
-    
-    # This function is now deprecated in favor of direct header handling in make_api_call
-    # Keeping for compatibility but not used
-    echo ""
 }
 
 # Function: get_provider_url
@@ -1022,78 +881,30 @@ save_output() {
 # UTILITY FUNCTIONS
 # ============================================================================
 
-# Function: clean_utf8_content
-# Description: Clean content to ensure valid UTF-8 encoding
-# Parameters:
-#   $1 - input content
-# Returns: Cleaned content via echo
-clean_utf8_content() {
-    local input="$1"
-    
-    # Try iconv first for proper UTF-8 cleaning
-    if command -v iconv >/dev/null 2>&1; then
-        printf '%s' "$input" | iconv -f UTF-8 -t UTF-8//IGNORE 2>/dev/null || \
-        printf '%s' "$input" | iconv -c -f UTF-8 -t UTF-8 2>/dev/null || \
-        printf '%s' "$input" | tr -cd '\11\12\15\40-\176\200-\377'
-    else
-        # Fallback: remove problematic characters
-        printf '%s' "$input" | tr -cd '\11\12\15\40-\176\200-\377'
-    fi
-}
-
 # Function: escape_json
-# Description: Escape string for JSON inclusion
+# Description: Escape string for JSON inclusion (minimal implementation)
 # Parameters:
 #   $1 - string to escape
 # Returns: Escaped string via echo
 escape_json() {
     local input="$1"
     
-    # First clean the UTF-8 content
+    # Basic cleaning - remove control characters except tab, newline, carriage return
     local cleaned_input
-    cleaned_input=$(clean_utf8_content "$input")
+    cleaned_input=$(printf '%s' "$input" | tr -d '\000-\010\013\014\016-\037\177')
     
-    # Try Python approach first for robust JSON escaping
-    if command -v python3 >/dev/null 2>&1; then
-        printf '%s' "$cleaned_input" | python3 -c "
-import sys
-import json
-try:
-    content = sys.stdin.read()
-    # Ensure content is valid UTF-8
-    content = content.encode('utf-8', 'ignore').decode('utf-8')
-    # Remove or replace problematic characters
-    content = ''.join(c for c in content if ord(c) >= 32 or c in '\t\n\r')
-    # Use json.dumps to properly escape, then remove outer quotes
-    escaped = json.dumps(content, ensure_ascii=False)[1:-1]
-    print(escaped, end='')
-except Exception as e:
-    # Fallback: basic cleaning
-    content = sys.stdin.read()
-    content = ''.join(c for c in content if 32 <= ord(c) <= 126 or c in '\t\n\r')
-    content = content.replace('\\\\', '\\\\\\\\').replace('\"', '\\\\\"')
-    print(content, end='')
-" 2>/dev/null
-    else
-        # Fallback bash implementation
-        printf '%s' "$cleaned_input" | sed '
-            s/\\/\\\\/g
-            s/"/\\"/g
-            s/\t/\\t/g
-            s/\r/\\r/g
-        ' | awk '
-        {
-            # Replace newlines with \n
-            gsub(/\n/, "\\n")
-            # Remove other control characters
-            gsub(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/, "")
-            print
-        }' | tr -d '\n'
-    fi
+    # Escape for JSON using sed
+    printf '%s' "$cleaned_input" | sed '
+        s/\\/\\\\/g
+        s/"/\\"/g
+        s/\t/\\t/g
+        s/\r/\\r/g
+        s/\n/\\n/g
+    '
 }
 
 # Function: extract_json_value
-# Description: Extract value from JSON by key (simple implementation)
+# Description: Extract value from JSON by key (improved implementation)
 # Parameters:
 #   $1 - JSON string
 #   $2 - key to extract (dot notation supported)
@@ -1102,10 +913,7 @@ extract_json_value() {
     local json="$1"
     local key="$2"
     
-    # Simple JSON extraction using sed/grep
-    # This is a basic implementation - for complex JSON, consider using jq
-    
-    # For simple cases, use basic regex patterns
+    # Simple JSON extraction using sed/grep with improved patterns
     case "$key" in
         "error.message")
             # Handle both nested error objects and direct error messages
@@ -1116,20 +924,42 @@ extract_json_value() {
             fi
             ;;
         "choices.0.message.content")
-            local temp_content
-            temp_content=$(echo "$json" | grep -o '"content"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1)
-            
-            if [[ -n "$temp_content" ]]; then
-                echo "$temp_content" | sed 's/.*"content"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/'
+            # Extract OpenAI-style content, handling multiline content
+            local temp_json="$json"
+            # First, try to extract the content field from within choices array
+            temp_json=$(echo "$json" | grep -o '"choices"[[:space:]]*:[[:space:]]*\[[^]]*\]' | head -1)
+            if [[ -n "$temp_json" ]]; then
+                # Extract content from the first choice
+                echo "$temp_json" | sed -n 's/.*"content"[[:space:]]*:[[:space:]]*"\(.*\)".*/\1/p' | head -1 | sed 's/\\n/\n/g; s/\\t/\t/g; s/\\"/"/g; s/\\\\/\\/g'
             else
+                # Fallback to simpler extraction
                 echo "$json" | sed -n 's/.*"content"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1
             fi
             ;;
         "content.0.text")
-            echo "$json" | sed -n 's/.*"content"[[:space:]]*:[[:space:]]*\[[^]]*{.*"text"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1
+            # Extract Anthropic-style content, handling multiline and escaped characters
+            # Use a more robust approach that handles nested JSON structures
+            local content_section
+            content_section=$(echo "$json" | grep -o '"content"[[:space:]]*:[[:space:]]*\[[^]]*\]' | head -1)
+            
+            if [[ -n "$content_section" ]]; then
+                # Extract text from the first content item, preserving newlines and handling escapes
+                echo "$content_section" | sed -n 's/.*"text"[[:space:]]*:[[:space:]]*"\(.*\)".*/\1/p' | head -1 | sed 's/\\n/\n/g; s/\\t/\t/g; s/\\"/"/g; s/\\\\/\\/g'
+            else
+                # Fallback extraction
+                echo "$json" | sed -n 's/.*"text"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1
+            fi
             ;;
         "candidates.0.content.parts.0.text")
-            echo "$json" | sed -n 's/.*"candidates"[[:space:]]*:[[:space:]]*\[[^]]*{.*"content"[[:space:]]*:[[:space:]]*{.*"parts"[[:space:]]*:[[:space:]]*\[[^]]*{.*"text"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1
+            # Extract Google Gemini content
+            local candidates_section
+            candidates_section=$(echo "$json" | grep -o '"candidates"[[:space:]]*:[[:space:]]*\[[^]]*\]' | head -1)
+            
+            if [[ -n "$candidates_section" ]]; then
+                echo "$candidates_section" | sed -n 's/.*"text"[[:space:]]*:[[:space:]]*"\(.*\)".*/\1/p' | head -1 | sed 's/\\n/\n/g; s/\\t/\t/g; s/\\"/"/g; s/\\\\/\\/g'
+            else
+                echo "$json" | sed -n 's/.*"text"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1
+            fi
             ;;
         "usage.prompt_tokens"|"usage.input_tokens")
             local tokens
@@ -1173,7 +1003,7 @@ extract_json_value() {
 check_dependencies() {
     local missing_deps=()
     
-    # Check for required commands (base64 removed from required list)
+    # Check for required commands
     for cmd in curl sed grep; do
         if ! command -v "$cmd" >/dev/null 2>&1; then
             missing_deps+=("$cmd")
@@ -1186,11 +1016,6 @@ check_dependencies() {
         return 1
     fi
     
-    # Check if we have base64 or od for image encoding
-    if ! command -v base64 >/dev/null 2>&1 && ! command -v od >/dev/null 2>&1; then
-        echo "Warning: Neither base64 nor od available. Image encoding will not work."
-    fi
-    
     return 0
 }
 
@@ -1200,7 +1025,7 @@ check_dependencies() {
 # Returns: Nothing (outputs to stdout)
 show_usage() {
     cat << 'EOF'
-chatWithLLM.sh - Universal LLM CLI Interface
+chatWithLLM.sh - Universal LLM CLI Interface (Minimal Version)
 
 USAGE:
     ./chatWithLLM.sh [OPTIONS] "prompt"
@@ -1210,7 +1035,7 @@ USAGE:
 OPTIONS:
     -m, --model MODEL       Model in provider:model format
                            Examples: openai:gpt-4, anthropic:claude-3-opus, google:gemini-pro
-    -f, --files FILES       Input files (comma-separated)
+    -f, --files FILES       Input text files (comma-separated)
     -o, --output FILE       Output file (auto-generated if not specified)
     -F, --format FORMAT     Output format (markdown, plain, json, html)
     -t, --temperature NUM   Temperature (0.0-2.0, default: 0.7)
@@ -1231,8 +1056,8 @@ EXAMPLES:
     ./chatWithLLM.sh -m "anthropic:claude-3-opus" "Write a poem"
     ./chatWithLLM.sh -m "openai:gpt-4" "Analyze this code"
     
-    # Use input files
-    ./chatWithLLM.sh -f "document.txt,image.jpg" "Analyze these files"
+    # Use input files (text files only)
+    ./chatWithLLM.sh -f "document.txt,readme.md" "Analyze these files"
     
     # Save output as HTML
     ./chatWithLLM.sh -F html --save "Create a technical report"
@@ -1259,6 +1084,10 @@ SUPPORTED PROVIDERS:
     - mistral (Mistral models)
     - deepseek (DeepSeek models)
     - meta (Llama models)
+
+DEPENDENCIES:
+    - bash, curl, sed, grep (minimal requirements)
+    - No support for images, PDFs, or advanced text encoding
 EOF
 }
 
@@ -1366,7 +1195,7 @@ process_request() {
 # Parameters: All command line arguments
 # Returns: 0 on success, 1 on failure
 main() {
-    # Default values - Updated
+    # Default values
     local model_string=""  # Will be set from config or command line
     local provider=""
     local input_files=""
@@ -1398,7 +1227,6 @@ main() {
                 echo "Error: -p/--provider option removed. Use -m/--model with provider:model format" >&2
                 return 1
                 ;;
-            # ... rest of the argument parsing remains the same ...
             -f|--files)
                 input_files="$2"
                 shift 2
