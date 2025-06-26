@@ -951,79 +951,76 @@ extract_json_value() {
             ;;
         "choices.0.message.content")
             # Extract OpenAI-style content, handling multiline content
-            local temp_json="$json"
-            # First, try to extract the content field from within choices array
-            temp_json=$(echo "$json" | grep -o '"choices"[[:space:]]*:[[:space:]]*\[[^]]*\]' | head -1)
-            if [[ -n "$temp_json" ]]; then
-                # Extract content from the first choice
-                echo "$temp_json" | sed -n 's/.*"content"[[:space:]]*:[[:space:]]*"\(.*\)".*/\1/p' | head -1 | sed 's/\\n/\n/g; s/\\t/\t/g; s/\\"/"/g; s/\\\\/\\/g'
-            else
-                # Fallback to simpler extraction
-                echo "$json" | sed -n 's/.*"content"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1
+            local content
+            # Use a more robust approach - extract everything between "content":" and the next ",
+            content=$(echo "$json" | sed -n 's/.*"choices":\[[^]]*"content":"\([^"]*\)".*/\1/p' | head -1)
+            
+            # If that fails, try a broader pattern
+            if [[ -z "$content" ]]; then
+                content=$(echo "$json" | grep -o '"content":"[^"]*"' | head -1 | sed 's/"content":"\(.*\)"/\1/')
+            fi
+            
+            # Unescape JSON
+            if [[ -n "$content" ]]; then
+                # Use printf for better escape sequence handling
+                printf '%b' "$content" | sed 's/\\"/"/g; s/\\\\/\\/g'
             fi
             ;;
         "content.0.text")
-            # Extract Anthropic-style content with more robust handling
-            local content_section
+            # Extract Anthropic-style content with better handling
+            local content
             
-            # Strategy: Use a more comprehensive approach to extract the content
-            # First try to find the content array and extract everything between the brackets
-            content_section=$(echo "$json" | sed -n 's/.*"content":\[\([^]]*\)\],"stop_reason".*/\1/p')
+            # New approach: Use grep to isolate the content array, then extract text
+            # First, get the entire content array
+            local content_array
+            content_array=$(echo "$json" | grep -o '"content":\[[^]]*\]' | head -1)
             
-            if [[ -z "$content_section" ]]; then
-                content_section=$(echo "$json" | sed -n 's/.*"content":\[\([^]]*\)\],"usage".*/\1/p')
+            if [[ -n "$content_array" ]]; then
+                # Extract the text value from the first object in the array
+                # Look for "text":" and capture everything until the next "
+                content=$(echo "$content_array" | sed -n 's/.*"text":"\([^"]*\)".*/\1/p' | head -1)
             fi
             
-            if [[ -z "$content_section" ]]; then
-                content_section=$(echo "$json" | sed -n 's/.*"content":\[\([^]]*\)\][,}].*/\1/p')
+            # If the above fails, try a more aggressive pattern
+            if [[ -z "$content" ]]; then
+                # Extract everything between "text":" and the closing "
+                # This handles cases where the content might be the last field
+                content=$(echo "$json" | sed -n 's/.*"text":"\([^"]*\)"[,}].*/\1/p' | head -1)
             fi
             
-            if [[ -n "$content_section" ]]; then
-                # Extract the text field from the content object
-                # Handle potential nested quotes more carefully
-                local text_content
-                text_content=$(echo "$content_section" | sed -n 's/^[[:space:]]*{[^}]*"text":[[:space:]]*"\(.*\)"[[:space:]]*,[[:space:]]*"type".*/\1/p')
+            # If still empty, try the most basic extraction
+            if [[ -z "$content" ]]; then
+                content=$(echo "$json" | grep -o '"text":"[^"]*"' | head -1 | sed 's/"text":"\(.*\)"/\1/')
+            fi
+            
+            # Properly unescape the content if we found it
+            if [[ -n "$content" ]]; then
+                # Method 1: Use printf %b which handles most escape sequences
+                local unescaped
+                unescaped=$(printf '%b' "$content")
                 
-                if [[ -n "$text_content" ]]; then
-                    # Properly unescape JSON content step by step to avoid sed issues
-                    # First handle backslash-quote sequences
-                    text_content=$(echo "$text_content" | sed 's/\\"/"/g')
-                    # Then handle newlines (use printf to convert \\n to actual newlines)
-                    text_content=$(echo "$text_content" | sed 's/\\n/\n/g')
-                    # Handle tabs
-                    text_content=$(echo "$text_content" | sed 's/\\t/\t/g')
-                    # Handle carriage returns
-                    text_content=$(echo "$text_content" | sed 's/\\r//g')
-                    # Finally handle escaped backslashes
-                    text_content=$(echo "$text_content" | sed 's/\\\\/\\/g')
-                    
-                    echo "$text_content"
-                    return
-                fi
-            fi
-            
-            # Ultimate fallback with improved quote handling
-            local fallback_content
-            fallback_content=$(echo "$json" | sed -n 's/.*"text"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
-            if [[ -n "$fallback_content" ]]; then
-                # Apply same unescaping as above
-                fallback_content=$(echo "$fallback_content" | sed 's/\\"/"/g')
-                fallback_content=$(echo "$fallback_content" | sed 's/\\n/\n/g')
-                fallback_content=$(echo "$fallback_content" | sed 's/\\t/\t/g')
-                fallback_content=$(echo "$fallback_content" | sed 's/\\r//g')
-                fallback_content=$(echo "$fallback_content" | sed 's/\\\\/\\/g')
-                echo "$fallback_content"
+                # Method 2: Additional cleanup for any remaining escapes
+                # Handle escaped quotes
+                unescaped=$(echo "$unescaped" | sed 's/\\"/"/g')
+                # Handle escaped backslashes (do this after quotes to avoid double-processing)
+                unescaped=$(echo "$unescaped" | sed 's/\\\\/\\/g')
+                
+                echo "$unescaped"
             fi
             ;;
         "candidates.0.content.parts.0.text")
             # Extract Google Gemini content
-            local candidates_section
-            candidates_section=$(echo "$json" | grep -o '"candidates"[[:space:]]*:[[:space:]]*\[[^]]*\]' | head -1)
+            local content
+            # Similar approach to Anthropic
+            content=$(echo "$json" | sed -n 's/.*"candidates":\[[^]]*"text":"\([^"]*\)".*/\1/p' | head -1)
             
-            if [[ -n "$candidates_section" ]]; then
-                echo "$candidates_section" | sed -n 's/.*"text"[[:space:]]*:[[:space:]]*"\(.*\)".*/\1/p' | head -1 | sed 's/\\n/\n/g; s/\\t/\t/g; s/\\"/"/g; s/\\\\/\\/g'
-            else
-                echo "$json" | sed -n 's/.*"text"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1
+            if [[ -z "$content" ]]; then
+                content=$(echo "$json" | grep -o '"text":"[^"]*"' | head -1 | sed 's/"text":"\(.*\)"/\1/')
+            fi
+            
+            # Unescape
+            if [[ -n "$content" ]]; then
+                printf '%b' "$content" | sed 's/\\"/"/g; s/\\\\/\\/g'
             fi
             ;;
         "usage.prompt_tokens"|"usage.input_tokens")
