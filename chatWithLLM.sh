@@ -199,8 +199,8 @@ process_input_files() {
     local files="$1"
     local processed_content=""
     local total_size=0
-    local max_single_file=2097152  # 2MB per file (reduced from 5MB)
-    local max_total_size=4194304   # 4MB total (reduced from 10MB)
+    local max_single_file=20971520
+    local max_total_size=41943040
     
     RESPONSE_ERROR=""
     
@@ -257,20 +257,8 @@ process_input_files() {
         # Additional cleanup: normalize line endings
         file_content=$(printf '%s' "$file_content" | tr '\r' '\n' | sed '/^$/N;/^\n$/d')
         
-        # Truncate very long files more aggressively for JSON compatibility
-        if [[ ${#file_content} -gt 30000 ]]; then
-            file_content="${file_content:0:30000}\n... [File truncated due to length limit for API compatibility] ..."
-            echo "Warning: Content from $file was truncated to 30KB" >&2
-        fi
-        
         processed_content+="$file_content"
     done
-    
-    # Final size check and truncation (more conservative)
-    if [[ ${#processed_content} -gt 50000 ]]; then
-        echo "Warning: Total content truncated due to size (${#processed_content} chars -> 50KB)" >&2
-        processed_content="${processed_content:0:50000}\n\n... [Content truncated for API limits] ..."
-    fi
     
     RESPONSE_CONTENT="$processed_content"
     return 0
