@@ -1,350 +1,394 @@
-# chatWithLLM.sh - Universal LLM CLI Interface
+# 🤖 Universal LLM CLI Interface
 
-A powerful, dependency-light bash script for interacting with multiple Large Language Model providers from the command line. No need for Python, Node.js, or heavy dependencies - just bash and standard Unix tools.
+A powerful, minimal bash script for interacting with multiple Large Language Model providers through a unified command-line interface. No external dependencies beyond standard Unix tools - just bash, curl, sed, and grep.
 
-## 🚀 Features
+## ✨ Features
 
-- **Multi-Provider Support**: OpenAI, Anthropic (Claude), Google (Gemini), Mistral, DeepSeek, and Meta (Llama)
-- **Zero Dependencies**: Only requires `curl`, `sed`, `grep`, and `od` (standard on most Unix systems)
-- **File Processing**: Support for text files, images, and PDFs
-- **Multiple Input Methods**: Direct prompts, file input, or stdin
-- **Flexible Output**: Plain text, Markdown, JSON, or HTML formats
-- **Configuration Management**: Centralized API key and model management
-- **Pure Shell Implementation**: Even includes a pure bash base64 encoder for image processing
+- 🔌 **Multiple Provider Support**: OpenAI, Anthropic (Claude), Google (Gemini), Mistral, DeepSeek, and Meta (Llama)
+- 📝 **Flexible Input Methods**: Direct prompts, file input, stdin, or multiple text files
+- 🎨 **Multiple Output Formats**: Markdown, plain text, JSON, and HTML
+- ⚙️ **Configurable**: Simple configuration file for API keys and default models
+- 🔧 **Minimal Dependencies**: Only requires bash, curl, sed, and grep
+- 💾 **File Processing**: Support for text files with automatic content processing
+- 📊 **Usage Tracking**: Token usage information from API responses
+- 🎯 **Provider-Specific**: Optimized request handling for each LLM provider
 
-## 📋 Requirements
+## 🚀 Quick Start
 
-- Bash 4.0+
-- `curl` (for HTTP requests)
-- `sed` and `grep` (for text processing)
-- `od` (for binary file handling)
-- Optional: `base64` (fallback included), `pdftotext` (for PDF support)
+### 1. Download and Setup
 
-## 🛠️ Installation
-
-1. Download the script:
 ```bash
-wget https://raw.githubusercontent.com/nkenan/chatWithLLM/main/chatWithLLM.sh
-# or
-curl -O https://raw.githubusercontent.com/nkenan/chatWithLLM/main/chatWithLLM.sh
-```
-
-2. Make it executable:
-```bash
+# Download the script
+curl -O https://example.com/chatWithLLM.sh
 chmod +x chatWithLLM.sh
-```
 
-3. Initialize configuration:
-```bash
+# Initialize configuration
 ./chatWithLLM.sh --init
 ```
 
-4. Edit the configuration file and add your API keys:
-```bash
-nano .chatWithLLM
-```
+### 2. Configure API Keys
 
-## ⚙️ Configuration
-
-The `--init` command creates a `.chatWithLLM` configuration file in your current directory:
+Edit the generated `.chatWithLLM` configuration file:
 
 ```bash
 # chatWithLLM Configuration File
-# Default model (provider:model format)
 DEFAULT_MODEL=anthropic:claude-3-opus-20240229
 
-# API Keys - Add your keys below
-OPENAI_API_KEY=your_openai_key_here
-ANTHROPIC_API_KEY=your_anthropic_key_here
-GOOGLE_API_KEY=your_google_key_here
-MISTRAL_API_KEY=your_mistral_key_here
-DEEPSEEK_API_KEY=your_deepseek_key_here
-META_API_KEY=your_meta_key_here
+# API Keys
+OPENAI_API_KEY=sk-your-openai-key-here
+ANTHROPIC_API_KEY=sk-ant-your-anthropic-key-here
+GOOGLE_API_KEY=your-google-api-key-here
+MISTRAL_API_KEY=your-mistral-api-key-here
+DEEPSEEK_API_KEY=your-deepseek-api-key-here
+META_API_KEY=your-meta-api-key-here
 ```
 
-## 🎯 Usage
+### 3. Start Chatting
+
+```bash
+# Use your default model
+./chatWithLLM.sh "Explain quantum computing in simple terms"
+
+# Specify a different model
+./chatWithLLM.sh -m "openai:gpt-4" "Write a Python function to sort a list"
+```
+
+## 📖 Usage
+
+### Basic Syntax
+
+```bash
+./chatWithLLM.sh [OPTIONS] "prompt"
+./chatWithLLM.sh [OPTIONS] --file input.txt
+echo "prompt" | ./chatWithLLM.sh [OPTIONS]
+```
+
+### Command Line Options
+
+| Option | Description | Example |
+|--------|-------------|---------|
+| `-m, --model MODEL` | Model in provider:model format | `-m "anthropic:claude-3-opus"` |
+| `-f, --files FILES` | Input text files (comma-separated) | `-f "doc1.txt,doc2.md"` |
+| `-o, --output FILE` | Output file | `-o "response.html"` |
+| `-F, --format FORMAT` | Output format (markdown, plain, json, html) | `-F json` |
+| `-t, --temperature NUM` | Temperature (0.0-2.0) | `-t 0.8` |
+| `-T, --max-tokens NUM` | Maximum tokens | `-T 2048` |
+| `--file FILE` | Read prompt from file | `--file prompt.txt` |
+| `--stdin` | Read prompt from stdin | `--stdin` |
+| `--save` | Save output to auto-generated file | `--save` |
+| `--init` | Initialize configuration file | `--init` |
+| `-v, --verbose` | Verbose output with usage stats | `-v` |
+| `--debug` | Debug mode (show raw API response) | `--debug` |
+| `-h, --help` | Show help message | `-h` |
+
+## 🌟 Examples
 
 ### Basic Usage
 
 ```bash
-# Use default model from config
-./chatWithLLM.sh "Explain quantum computing"
+# Simple question with default model
+./chatWithLLM.sh "What is the capital of France?"
 
-# Specify model explicitly
-./chatWithLLM.sh -m "openai:gpt-4" "Write a Python function to sort a list"
-./chatWithLLM.sh -m "anthropic:claude-3-opus" "Analyze this business strategy"
-./chatWithLLM.sh -m "google:gemini-pro" "Translate: Hello, how are you?"
+# Creative writing with specific model
+./chatWithLLM.sh -m "openai:gpt-4" "Write a short poem about autumn"
+
+# Technical explanation with higher temperature
+./chatWithLLM.sh -m "google:gemini-pro" -t 0.9 "Explain machine learning algorithms"
 ```
 
-### File Input
+### File Input Examples
 
 ```bash
-# Process text files
-./chatWithLLM.sh -f "document.txt" "Summarize this document"
+# Analyze a single document
+./chatWithLLM.sh -f "report.txt" "Summarize the key points in this document"
 
 # Process multiple files
-./chatWithLLM.sh -f "code.py,readme.md" "Review this code and documentation"
+./chatWithLLM.sh -f "code.py,readme.md,docs.txt" "Review this project and suggest improvements"
 
-# Process images (vision models)
-./chatWithLLM.sh -m "openai:gpt-4-vision-preview" -f "chart.png" "Analyze this chart"
-
-# Process PDFs (requires pdftotext)
-./chatWithLLM.sh -f "report.pdf" "Extract key insights from this report"
-```
-
-### Different Input Methods
-
-```bash
 # Read prompt from file
-./chatWithLLM.sh --file prompt.txt -m "anthropic:claude-3-opus"
-
-# Read from stdin
-echo "What is the capital of France?" | ./chatWithLLM.sh
-
-# Interactive mode (if no prompt provided and stdin available)
-./chatWithLLM.sh -m "openai:gpt-4"
-# Type your prompt and press Ctrl+D
+./chatWithLLM.sh --file my_prompt.txt -m "anthropic:claude-3-opus"
 ```
 
-### Output Formats
+### Output Formatting
 
 ```bash
-# Markdown output (default)
-./chatWithLLM.sh "Create a project plan" -F markdown
+# Save as HTML report
+./chatWithLLM.sh -F html --save "Create a technical analysis of blockchain technology"
 
-# Plain text
-./chatWithLLM.sh "Simple answer please" -F plain
+# Generate JSON output
+./chatWithLLM.sh -F json -o "response.json" "Explain the water cycle"
 
-# JSON output
-./chatWithLLM.sh "Analyze sentiment" -F json
-
-# HTML output
-./chatWithLLM.sh "Create a report" -F html
+# Markdown format with custom filename
+./chatWithLLM.sh -F markdown -o "analysis.md" "Compare Python vs JavaScript"
 ```
 
-### Save Output
+### Pipeline Usage
 
 ```bash
-# Auto-generate filename
-./chatWithLLM.sh --save "Write a technical document" -F html
+# Use with pipes
+echo "Translate to French: Hello, how are you?" | ./chatWithLLM.sh -m "google:gemini-pro"
 
-# Specify output file
-./chatWithLLM.sh -o "analysis.md" "Analyze market trends"
+# Process command output
+ls -la | ./chatWithLLM.sh "Explain what these files and directories are for"
+
+# Chain with other commands
+cat error.log | ./chatWithLLM.sh "Analyze this error log and suggest fixes" | tee solution.txt
 ```
 
-### Advanced Options
+### Advanced Examples
 
 ```bash
-# Adjust creativity/randomness
-./chatWithLLM.sh -t 0.9 "Write a creative story"  # Higher temperature = more creative
-./chatWithLLM.sh -t 0.1 "Solve this math problem"  # Lower temperature = more focused
+# Code review with multiple files and detailed output
+./chatWithLLM.sh -f "main.py,utils.py,config.json" \
+    -m "anthropic:claude-3-opus" \
+    -F html \
+    --save \
+    -v \
+    "Perform a comprehensive code review and suggest optimizations"
 
-# Limit response length
-./chatWithLLM.sh -T 500 "Brief summary please"  # Maximum 500 tokens
+# Creative writing with specific parameters
+./chatWithLLM.sh \
+    -m "openai:gpt-4" \
+    -t 1.2 \
+    -T 2048 \
+    -F markdown \
+    -o "story.md" \
+    "Write a science fiction short story about time travel"
 
-# Verbose mode (show token usage)
-./chatWithLLM.sh -v "Explain machine learning"
-
-# Debug mode (show raw API response)
-./chatWithLLM.sh --debug "Test response"
+# Technical documentation generation
+./chatWithLLM.sh \
+    -f "api_spec.yaml,examples.json" \
+    -m "google:gemini-pro" \
+    -F html \
+    --save \
+    "Generate comprehensive API documentation with examples"
 ```
 
-## 🌐 Supported Providers and Models
+## 🔧 Configuration
+
+### Configuration File (.chatWithLLM)
+
+The configuration file supports:
+
+- **DEFAULT_MODEL**: Your preferred model in `provider:model` format
+- **API Keys**: Store all your provider API keys securely
+- **Comments**: Use `#` for comments
+
+Example configuration:
+
+```bash
+# Default model for all requests
+DEFAULT_MODEL=anthropic:claude-3-opus-20240229
+
+# OpenAI Configuration
+OPENAI_API_KEY=sk-proj-abcd1234...
+
+# Anthropic Configuration  
+ANTHROPIC_API_KEY=sk-ant-api03-xyz789...
+
+# Google Configuration
+GOOGLE_API_KEY=AIzaSyABC123...
+
+# Mistral Configuration
+MISTRAL_API_KEY=mi-abc123...
+
+# DeepSeek Configuration
+DEEPSEEK_API_KEY=sk-def456...
+
+# Meta Configuration (if using cloud API)
+META_API_KEY=meta-abc123...
+```
+
+## 🤖 Supported Providers
+
+The script is **model-agnostic** - it doesn't validate specific model names but passes whatever model you specify to the provider's API. This means it automatically supports new models as providers release them.
 
 ### OpenAI
-```bash
--m "openai:gpt-4"
--m "openai:gpt-4-turbo"
--m "openai:gpt-3.5-turbo"
--m "openai:gpt-4-vision-preview"  # For image analysis
-```
+- **Provider**: `openai`
+- **Format**: `openai:model-name`
+- **Examples**: `openai:gpt-4`, `openai:gpt-4-turbo`, `openai:gpt-3.5-turbo`, `openai:gpt-4o`
 
 ### Anthropic (Claude)
-```bash
--m "anthropic:claude-3-opus-20240229"
--m "anthropic:claude-3-sonnet-20240229"
--m "anthropic:claude-3-haiku-20240307"
-```
+- **Provider**: `anthropic`
+- **Format**: `anthropic:model-name`
+- **Examples**: `anthropic:claude-3-opus-20240229`, `anthropic:claude-3-sonnet-20240229`, `anthropic:claude-3-haiku-20240307`
 
 ### Google (Gemini)
-```bash
--m "google:gemini-pro"
--m "google:gemini-pro-vision"
-```
+- **Provider**: `google`
+- **Format**: `google:model-name`
+- **Examples**: `google:gemini-pro`, `google:gemini-pro-vision`, `google:gemini-1.5-pro`
 
 ### Mistral
-```bash
--m "mistral:mistral-large-latest"
--m "mistral:mistral-medium-latest"
--m "mistral:mistral-small-latest"
-```
+- **Provider**: `mistral`
+- **Format**: `mistral:model-name`
+- **Examples**: `mistral:mistral-large-latest`, `mistral:mistral-medium-latest`, `mistral:open-mixtral-8x7b`
 
 ### DeepSeek
-```bash
--m "deepseek:deepseek-chat"
--m "deepseek:deepseek-coder"
-```
+- **Provider**: `deepseek`
+- **Format**: `deepseek:model-name`
+- **Examples**: `deepseek:deepseek-chat`, `deepseek:deepseek-coder`
 
 ### Meta (Llama)
+- **Provider**: `meta`
+- **Format**: `meta:model-name`
+- **Examples**: `meta:llama-2-70b-chat` (if using cloud API)
+
+> **Note**: The script simply forwards your specified model name to the provider's API. Check each provider's documentation for their current available models and exact naming conventions.
+
+## 📤 Output Formats
+
+### Markdown (default)
 ```bash
--m "meta:llama-2-70b-chat"
--m "meta:llama-2-13b-chat"
+./chatWithLLM.sh -F markdown "Explain photosynthesis"
 ```
 
-## 📝 Command Line Options
+Generates a structured markdown document with metadata and formatted response.
 
-| Option | Description | Example |
-|--------|-------------|---------|
-| `-m, --model` | Model in provider:model format | `-m "openai:gpt-4"` |
-| `-f, --files` | Input files (comma-separated) | `-f "doc.txt,img.jpg"` |
-| `-o, --output` | Output file | `-o "response.md"` |
-| `-F, --format` | Output format (markdown/plain/json/html) | `-F json` |
-| `-t, --temperature` | Temperature (0.0-2.0, default: 0.7) | `-t 0.9` |
-| `-T, --max-tokens` | Maximum tokens (default: 4096) | `-T 1000` |
-| `--file` | Read prompt from file | `--file prompt.txt` |
-| `--stdin` | Read prompt from stdin | `--stdin` |
-| `--save` | Save output to auto-generated file | `--save` |
-| `--init` | Initialize configuration file | `--init` |
-| `-v, --verbose` | Show token usage information | `-v` |
-| `--debug` | Show raw API responses | `--debug` |
-| `-h, --help` | Show help message | `-h` |
-
-## 🔧 Examples
-
-### Code Analysis
+### Plain Text
 ```bash
-./chatWithLLM.sh -m "anthropic:claude-3-opus" -f "script.py" \
-  "Review this code for bugs and suggest improvements"
+./chatWithLLM.sh -F plain "What is AI?"
 ```
 
-### Document Processing
+Returns only the model's response without formatting.
+
+### JSON
 ```bash
-./chatWithLLM.sh -m "openai:gpt-4" -f "research.pdf,data.csv" \
-  "Create an executive summary of this research and data"
+./chatWithLLM.sh -F json "Describe machine learning"
 ```
 
-### Creative Writing
+Returns structured JSON with provider, model, prompt, response, usage, and timestamp.
+
+### HTML
 ```bash
-./chatWithLLM.sh -m "anthropic:claude-3-opus" -t 0.9 --save -F markdown \
-  "Write a short science fiction story about AI consciousness"
+./chatWithLLM.sh -F html "Create a technical report"
 ```
 
-### Data Analysis
+Generates a complete HTML document with styling and metadata.
+
+## 📁 File Processing
+
+### Supported File Types
+- Text files (`.txt`)
+- Markdown files (`.md`)
+- Code files (`.py`, `.js`, `.json`, etc.)
+- Configuration files (`.yaml`, `.conf`, etc.)
+- Any UTF-8 text content
+
+### File Size Limits
+- **Per file**: 2MB maximum
+- **Total content**: 4MB maximum
+- **Content length**: Automatically truncated for API compatibility
+
+### Examples
+
 ```bash
-./chatWithLLM.sh -m "openai:gpt-4" -f "sales_data.csv" -F json \
-  "Analyze sales trends and provide insights"
+# Single file analysis
+./chatWithLLM.sh -f "document.txt" "Summarize this document"
+
+# Multiple file processing
+./chatWithLLM.sh -f "src/main.py,src/utils.py,README.md" "Review this codebase"
+
+# Large file handling (automatic truncation)
+./chatWithLLM.sh -f "large_log.txt" "Find errors in this log file"
 ```
 
-### Image Analysis
-```bash
-./chatWithLLM.sh -m "openai:gpt-4-vision-preview" -f "screenshot.png" \
-  "What does this user interface screenshot show?"
-```
+## 🔒 Security Notes
 
-### Batch Processing
-```bash
-# Process multiple prompts from files
-for prompt in prompts/*.txt; do
-    ./chatWithLLM.sh --file "$prompt" -m "anthropic:claude-3-opus" \
-      --save -F markdown
-done
-```
+- **API Keys**: Store securely in the configuration file with appropriate file permissions
+- **File Permissions**: Ensure `.chatWithLLM` is readable only by you (`chmod 600 .chatWithLLM`)
+- **Sensitive Data**: Be cautious when processing files containing sensitive information
+- **Network**: All API calls use HTTPS for secure communication
 
-## 🛡️ Error Handling
-
-The script includes comprehensive error handling:
-
-- **Missing Dependencies**: Checks for required commands
-- **Invalid API Keys**: Clear error messages for authentication issues
-- **File Not Found**: Validates input files before processing
-- **Network Issues**: Handles HTTP errors gracefully
-- **Invalid JSON**: Robust parsing without external JSON libraries
-
-## 🏗️ Architecture
-
-### Pure Shell Implementation
-- No external JSON parsers (jq, awk) required
-- Custom base64 encoder for image processing
-- Provider-agnostic request building
-- Modular response parsing
-
-### Key Components
-- **Configuration Management**: API key and default model handling
-- **Request Building**: Provider-specific JSON formatting
-- **Response Parsing**: Extract content and usage from different API formats
-- **File Processing**: Handle text, images, and PDFs
-- **Output Formatting**: Multiple output formats with metadata
-
-## 🤝 Contributing
-
-Contributions are welcome! Here are some areas for improvement:
-
-1. **Additional Providers**: Add support for new LLM providers
-2. **Enhanced File Support**: More file types and processing options
-3. **Streaming Responses**: Add support for streaming API responses
-4. **Configuration Improvements**: Environment variable support
-5. **Error Recovery**: Retry logic and fallback mechanisms
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🆘 Troubleshooting
+## 🛠️ Troubleshooting
 
 ### Common Issues
 
-**"Missing required dependencies"**
+**Configuration file not found**
 ```bash
-# Install missing tools (Ubuntu/Debian)
-sudo apt-get install curl grep sed coreutils
-
-# macOS (should be pre-installed)
-# All required tools come with macOS
+# Solution: Initialize configuration
+./chatWithLLM.sh --init
 ```
 
-**"No API key found for provider"**
+**API key not found**
 ```bash
-# Edit configuration file
-nano .chatWithLLM
-
-# Add your API key
-OPENAI_API_KEY=your_actual_key_here
+# Solution: Add your API key to .chatWithLLM
+echo "OPENAI_API_KEY=your-key-here" >> .chatWithLLM
 ```
 
-**"File not found" errors**
+**Invalid model format**
 ```bash
-# Check file paths are correct
-ls -la yourfile.txt
+# Wrong
+./chatWithLLM.sh -m "gpt-4" "Hello"
 
-# Use absolute paths if needed
-./chatWithLLM.sh -f "/full/path/to/file.txt" "Your prompt"
+# Correct
+./chatWithLLM.sh -m "openai:gpt-4" "Hello"
 ```
 
-**PDF processing fails**
+**File too large**
 ```bash
-# Install pdftotext (Ubuntu/Debian)
-sudo apt-get install poppler-utils
-
-# macOS
-brew install poppler
+# The script automatically handles large files by truncating content
+# Check the warning messages for truncation notifications
+./chatWithLLM.sh -v -f "large_file.txt" "Analyze this file"
 ```
 
 ### Debug Mode
 
-Use `--debug` to see raw API responses and diagnose issues:
+Use `--debug` to see the raw API response:
 
 ```bash
 ./chatWithLLM.sh --debug -m "openai:gpt-4" "Test message"
 ```
 
-## 🔗 API Documentation Links
+### Verbose Mode
 
-- [OpenAI API](https://platform.openai.com/docs/api-reference)
-- [Anthropic API](https://docs.anthropic.com/claude/reference)
-- [Google Gemini API](https://ai.google.dev/docs)
-- [Mistral API](https://docs.mistral.ai/api/)
-- [DeepSeek API](https://platform.deepseek.com/api-docs/)
+Use `-v` for detailed information including token usage:
+
+```bash
+./chatWithLLM.sh -v -m "anthropic:claude-3-opus" "Explain quantum computing"
+```
+
+## 📋 Requirements
+
+### System Requirements
+- **Operating System**: Unix-like (Linux, macOS, WSL)
+- **Shell**: Bash 4.0+
+- **Commands**: `curl`, `sed`, `grep` (standard on most systems)
+
+### API Requirements
+- Valid API keys for desired providers
+- Internet connection for API calls
+- Sufficient API credits/quota
+
+### Installation Check
+```bash
+# Verify dependencies
+command -v curl && echo "✓ curl found"
+command -v sed && echo "✓ sed found" 
+command -v grep && echo "✓ grep found"
+command -v bash && echo "✓ bash found"
+```
+
+## 🤝 Contributing
+
+This script is designed to be minimal and dependency-free. When contributing:
+
+1. **Maintain Compatibility**: Keep the minimal dependency philosophy
+2. **Test Thoroughly**: Test with multiple providers and file types
+3. **Document Changes**: Update README and inline documentation
+4. **Follow Style**: Maintain the existing bash coding style
+
+## 📄 License
+
+This script is provided as-is for educational and practical use. Ensure compliance with each LLM provider's terms of service and API usage policies.
+
+## 🔗 Related Links
+
+- [OpenAI API Documentation](https://platform.openai.com/docs)
+- [Anthropic API Documentation](https://docs.anthropic.com)
+- [Google AI API Documentation](https://ai.google.dev/docs)
+- [Mistral AI API Documentation](https://docs.mistral.ai)
+- [DeepSeek API Documentation](https://platform.deepseek.com/api-docs)
 
 ---
 
-**Made with ❤️ for the command line enthusiasts who prefer bash over bloat.**
+**Happy chatting with LLMs! 🎉**
