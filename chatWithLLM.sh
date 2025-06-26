@@ -190,7 +190,7 @@ validate_provider() {
 # ============================================================================
 
 # Function: process_input_files
-# Description: Process multiple text files only
+# Description: Process multiple text files only (improved implementation)
 # Parameters:
 #   $1 - comma-separated list of file paths
 # Returns: Processed content via RESPONSE_CONTENT, error via RESPONSE_ERROR
@@ -199,8 +199,8 @@ process_input_files() {
     local files="$1"
     local processed_content=""
     local total_size=0
-    local max_single_file=5242880  # 5MB per file
-    local max_total_size=10485760  # 10MB total
+    local max_single_file=2097152  # 2MB per file (reduced from 5MB)
+    local max_total_size=4194304   # 4MB total (reduced from 10MB)
     
     RESPONSE_ERROR=""
     
@@ -213,6 +213,12 @@ process_input_files() {
         
         if [[ ! -f "$file" ]]; then
             RESPONSE_ERROR="File not found: $file"
+            return 1
+        fi
+        
+        # Check if file is readable
+        if [[ ! -r "$file" ]]; then
+            RESPONSE_ERROR="File not readable: $file"
             return 1
         fi
         
@@ -237,25 +243,33 @@ process_input_files() {
         
         processed_content+="\n\n--- Content from $file ---\n"
         
-        # Read file content
+        # Read file content with better error handling
         local file_content
-        file_content=$(cat "$file")
+        if ! file_content=$(cat "$file" 2>/dev/null); then
+            echo "Warning: Could not read file: $file" >&2
+            continue
+        fi
         
-        # Basic cleaning - remove null bytes and other problematic characters
-        file_content=$(printf '%s' "$file_content" | tr -d '\000-\010\013\014\016-\037\177')
+        # More aggressive cleaning for problematic characters
+        # Remove null bytes, control characters, and non-ASCII characters
+        file_content=$(printf '%s' "$file_content" | LC_ALL=C tr -d '\000-\010\013\014\016-\037\177-\377')
         
-        # Truncate very long files
-        if [[ ${#file_content} -gt 50000 ]]; then
-            file_content="${file_content:0:50000}\n... [File truncated due to length] ..."
+        # Additional cleanup: normalize line endings
+        file_content=$(printf '%s' "$file_content" | tr '\r' '\n' | sed '/^$/N;/^\n$/d')
+        
+        # Truncate very long files more aggressively for JSON compatibility
+        if [[ ${#file_content} -gt 30000 ]]; then
+            file_content="${file_content:0:30000}\n... [File truncated due to length limit for API compatibility] ..."
+            echo "Warning: Content from $file was truncated to 30KB" >&2
         fi
         
         processed_content+="$file_content"
     done
     
-    # Final size check and truncation
-    if [[ ${#processed_content} -gt 80000 ]]; then
-        echo "Warning: Content truncated due to size (${#processed_content} chars)" >&2
-        processed_content="${processed_content:0:80000}\n\n... [Content truncated for API limits] ..."
+    # Final size check and truncation (more conservative)
+    if [[ ${#processed_content} -gt 50000 ]]; then
+        echo "Warning: Total content truncated due to size (${#processed_content} chars -> 50KB)" >&2
+        processed_content="${processed_content:0:50000}\n\n... [Content truncated for API limits] ..."
     fi
     
     RESPONSE_CONTENT="$processed_content"
@@ -882,25 +896,26 @@ save_output() {
 # ============================================================================
 
 # Function: escape_json
-# Description: Escape string for JSON inclusion (minimal implementation)
+# Description: Escape string for JSON inclusion (improved implementation)
 # Parameters:
 #   $1 - string to escape
 # Returns: Escaped string via echo
 escape_json() {
     local input="$1"
     
-    # Basic cleaning - remove control characters except tab, newline, carriage return
+    # More thorough cleaning - remove problematic control characters
+    # Keep only printable ASCII, space, tab, newline, carriage return
     local cleaned_input
-    cleaned_input=$(printf '%s' "$input" | tr -d '\000-\010\013\014\016-\037\177')
+    cleaned_input=$(printf '%s' "$input" | LC_ALL=C sed 's/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\xFF]//g')
     
-    # Escape for JSON using sed
+    # Escape for JSON using more robust sed patterns
     printf '%s' "$cleaned_input" | sed '
         s/\\/\\\\/g
         s/"/\\"/g
-        s/\t/\\t/g
-        s/\r/\\r/g
-        s/\n/\\n/g
-    '
+        s/	/\\t/g
+        s//\\r/g
+        s/$/\\n/g
+    ' | tr -d '\n' | sed 's/\\n$//'
 }
 
 # Function: extract_json_value
