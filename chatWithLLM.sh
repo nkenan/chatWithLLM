@@ -822,6 +822,10 @@ format_markdown() {
     local model="$4"
     local usage="$5"
     
+    # Sanitize content for safe output
+    local safe_content
+    safe_content=$(sanitize_content_for_output "$content")
+    
     cat << EOF
 # LLM Response
 
@@ -836,7 +840,7 @@ $prompt
 
 ## Response
 
-$content
+$safe_content
 EOF
 }
 
@@ -882,6 +886,23 @@ save_output() {
 # ============================================================================
 # UTILITY FUNCTIONS
 # ============================================================================
+
+# Function: sanitize_content_for_output
+# Description: Sanitize content for safe shell output
+# Parameters:
+#   $1 - content to sanitize
+# Returns: Sanitized content via echo
+sanitize_content_for_output() {
+    local content="$1"
+    
+    # Escape problematic characters for shell output
+    printf '%s' "$content" | sed '
+        s/\\/\\\\/g
+        s/"/\\"/g
+        s/`/\\`/g
+        s/\$/\\$/g
+    '
+}
 
 # Function: escape_json
 # Description: Escape string for JSON inclusion (improved implementation)
@@ -942,46 +963,57 @@ extract_json_value() {
             fi
             ;;
         "content.0.text")
-            # Extract Anthropic-style content with robust sed-only handling
-            # Strategy: Extract the content array section first, then get the text
+            # Extract Anthropic-style content with more robust handling
             local content_section
             
-            # Try multiple patterns to find the content array
+            # Strategy: Use a more comprehensive approach to extract the content
+            # First try to find the content array and extract everything between the brackets
             content_section=$(echo "$json" | sed -n 's/.*"content":\[\([^]]*\)\],"stop_reason".*/\1/p')
             
             if [[ -z "$content_section" ]]; then
-                # Alternative pattern for different JSON structure
                 content_section=$(echo "$json" | sed -n 's/.*"content":\[\([^]]*\)\],"usage".*/\1/p')
             fi
             
             if [[ -z "$content_section" ]]; then
-                # More general pattern
                 content_section=$(echo "$json" | sed -n 's/.*"content":\[\([^]]*\)\][,}].*/\1/p')
             fi
             
             if [[ -n "$content_section" ]]; then
-                # Extract text field from the content object
-                # Handle the case where text content may contain escaped quotes and backslashes
+                # Extract the text field from the content object
+                # Handle potential nested quotes more carefully
                 local text_content
-                
-                # Use a more sophisticated sed pattern that handles nested quotes better
                 text_content=$(echo "$content_section" | sed -n 's/^[[:space:]]*{[^}]*"text":[[:space:]]*"\(.*\)"[[:space:]]*,[[:space:]]*"type".*/\1/p')
                 
                 if [[ -n "$text_content" ]]; then
-                    # Properly unescape JSON content step by step
-                    printf '%s' "$text_content" | sed '
-                        s/\\"/"/g
-                        s/\\n/\n/g
-                        s/\\t/\t/g
-                        s/\\r/\r/g
-                        s/\\\\/\\/g
-                    '
+                    # Properly unescape JSON content step by step to avoid sed issues
+                    # First handle backslash-quote sequences
+                    text_content=$(echo "$text_content" | sed 's/\\"/"/g')
+                    # Then handle newlines (use printf to convert \\n to actual newlines)
+                    text_content=$(echo "$text_content" | sed 's/\\n/\n/g')
+                    # Handle tabs
+                    text_content=$(echo "$text_content" | sed 's/\\t/\t/g')
+                    # Handle carriage returns
+                    text_content=$(echo "$text_content" | sed 's/\\r//g')
+                    # Finally handle escaped backslashes
+                    text_content=$(echo "$text_content" | sed 's/\\\\/\\/g')
+                    
+                    echo "$text_content"
                     return
                 fi
             fi
             
-            # Ultimate fallback: simple text extraction
-            echo "$json" | sed -n 's/.*"text"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1 | sed 's/\\n/\n/g; s/\\t/\t/g; s/\\"/"/g; s/\\\\/\\/g'
+            # Ultimate fallback with improved quote handling
+            local fallback_content
+            fallback_content=$(echo "$json" | sed -n 's/.*"text"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+            if [[ -n "$fallback_content" ]]; then
+                # Apply same unescaping as above
+                fallback_content=$(echo "$fallback_content" | sed 's/\\"/"/g')
+                fallback_content=$(echo "$fallback_content" | sed 's/\\n/\n/g')
+                fallback_content=$(echo "$fallback_content" | sed 's/\\t/\t/g')
+                fallback_content=$(echo "$fallback_content" | sed 's/\\r//g')
+                fallback_content=$(echo "$fallback_content" | sed 's/\\\\/\\/g')
+                echo "$fallback_content"
+            fi
             ;;
         "candidates.0.content.parts.0.text")
             # Extract Google Gemini content
@@ -1028,6 +1060,7 @@ extract_json_value() {
             ;;
     esac
 }
+
 # Function: check_dependencies
 # Description: Verify required commands are available
 # Parameters: None
