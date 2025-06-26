@@ -907,7 +907,7 @@ escape_json() {
 }
 
 # Function: extract_json_value
-# Description: Extract value from JSON by key (improved implementation)
+# Description: Extract value from JSON by key (improved implementation - no new dependencies)
 # Parameters:
 #   $1 - JSON string
 #   $2 - key to extract (dot notation supported)
@@ -920,11 +920,13 @@ extract_json_value() {
     case "$key" in
         "error.message")
             # Handle both nested error objects and direct error messages
-            echo "$json" | sed -n 's/.*"error"[[:space:]]*:[[:space:]]*{[^}]*"message"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1
-            if [[ -z "$(echo "$json" | sed -n 's/.*"error"[[:space:]]*:[[:space:]]*{[^}]*"message"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')" ]]; then
+            local error_msg
+            error_msg=$(echo "$json" | sed -n 's/.*"error"[[:space:]]*:[[:space:]]*{[^}]*"message"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+            if [[ -z "$error_msg" ]]; then
                 # Try simpler pattern for direct message
-                echo "$json" | sed -n 's/.*"message"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1
+                error_msg=$(echo "$json" | sed -n 's/.*"message"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
             fi
+            echo "$error_msg"
             ;;
         "choices.0.message.content")
             # Extract OpenAI-style content, handling multiline content
@@ -940,18 +942,46 @@ extract_json_value() {
             fi
             ;;
         "content.0.text")
-            # Extract Anthropic-style content, handling multiline and escaped characters
-            # Use a more robust approach that handles nested JSON structures
+            # Extract Anthropic-style content with robust sed-only handling
+            # Strategy: Extract the content array section first, then get the text
             local content_section
-            content_section=$(echo "$json" | grep -o '"content"[[:space:]]*:[[:space:]]*\[[^]]*\]' | head -1)
+            
+            # Try multiple patterns to find the content array
+            content_section=$(echo "$json" | sed -n 's/.*"content":\[\([^]]*\)\],"stop_reason".*/\1/p')
+            
+            if [[ -z "$content_section" ]]; then
+                # Alternative pattern for different JSON structure
+                content_section=$(echo "$json" | sed -n 's/.*"content":\[\([^]]*\)\],"usage".*/\1/p')
+            fi
+            
+            if [[ -z "$content_section" ]]; then
+                # More general pattern
+                content_section=$(echo "$json" | sed -n 's/.*"content":\[\([^]]*\)\][,}].*/\1/p')
+            fi
             
             if [[ -n "$content_section" ]]; then
-                # Extract text from the first content item, preserving newlines and handling escapes
-                echo "$content_section" | sed -n 's/.*"text"[[:space:]]*:[[:space:]]*"\(.*\)".*/\1/p' | head -1 | sed 's/\\n/\n/g; s/\\t/\t/g; s/\\"/"/g; s/\\\\/\\/g'
-            else
-                # Fallback extraction
-                echo "$json" | sed -n 's/.*"text"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1
+                # Extract text field from the content object
+                # Handle the case where text content may contain escaped quotes and backslashes
+                local text_content
+                
+                # Use a more sophisticated sed pattern that handles nested quotes better
+                text_content=$(echo "$content_section" | sed -n 's/^[[:space:]]*{[^}]*"text":[[:space:]]*"\(.*\)"[[:space:]]*,[[:space:]]*"type".*/\1/p')
+                
+                if [[ -n "$text_content" ]]; then
+                    # Properly unescape JSON content step by step
+                    printf '%s' "$text_content" | sed '
+                        s/\\"/"/g
+                        s/\\n/\n/g
+                        s/\\t/\t/g
+                        s/\\r/\r/g
+                        s/\\\\/\\/g
+                    '
+                    return
+                fi
             fi
+            
+            # Ultimate fallback: simple text extraction
+            echo "$json" | sed -n 's/.*"text"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1 | sed 's/\\n/\n/g; s/\\t/\t/g; s/\\"/"/g; s/\\\\/\\/g'
             ;;
         "candidates.0.content.parts.0.text")
             # Extract Google Gemini content
@@ -998,7 +1028,6 @@ extract_json_value() {
             ;;
     esac
 }
-
 # Function: check_dependencies
 # Description: Verify required commands are available
 # Parameters: None
