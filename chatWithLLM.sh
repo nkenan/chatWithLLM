@@ -1327,6 +1327,11 @@ main() {
             echo "Either specify -m provider:model or set DEFAULT_MODEL in $CONFIG_FILE" >&2
             return 1
         fi
+    else
+        # Model was specified on command line
+        if [[ "$verbose" == true ]]; then
+            echo "Using specified model: $model_string" >&2
+        fi
     fi
     
     # Handle different input methods
