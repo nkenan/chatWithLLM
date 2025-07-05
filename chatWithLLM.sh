@@ -104,7 +104,8 @@ load_config() {
     if [[ -n "${DEFAULT_MODEL:-}" ]]; then
         # Validate format
         if [[ "$DEFAULT_MODEL" == *":"* ]]; then
-            echo "Using default model from config: $DEFAULT_MODEL" >&2
+            # Don't print verbose message here - let main() handle it
+            :
         else
             echo "Warning: DEFAULT_MODEL in config should be in provider:model format" >&2
         fi
