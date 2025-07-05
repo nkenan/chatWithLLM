@@ -979,6 +979,10 @@ extract_json_value() {
             fi
             # Step 3: Properly unescape the content
             if [[ -n "$content" ]]; then
+                # First handle the double-escaped sequences
+                content=$(echo "$content" | sed 's/\\\\n/\\n/g')
+                content=$(echo "$content" | sed 's/\\\\t/\\t/g')
+                # Now handle the single-escaped sequences
                 content=$(echo "$content" | sed 's/\\n/\
 /g')
                 content=$(echo "$content" | sed 's/\\t/	/g')
