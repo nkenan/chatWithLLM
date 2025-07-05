@@ -1350,7 +1350,7 @@ main() {
         if [[ -n "${DEFAULT_MODEL:-}" ]]; then
             model_string="$DEFAULT_MODEL"
             if [[ "$verbose" == true ]]; then
-                echo "Using default model: $model_string" >&2
+                echo "Using default model from config: $model_string" >&2
             fi
         else
             echo "Error: No model specified and no DEFAULT_MODEL set in config" >&2
@@ -1358,7 +1358,7 @@ main() {
             return 1
         fi
     else
-        # Model was specified on command line
+        # Model was specified on command line - this should take priority
         if [[ "$verbose" == true ]]; then
             echo "Using specified model: $model_string" >&2
         fi
