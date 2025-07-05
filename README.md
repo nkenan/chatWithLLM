@@ -8,7 +8,7 @@ A powerful, minimal bash script for interacting with multiple Large Language Mod
 
 ## 🚀 Features
 
-- **Multi-Provider Support**: OpenAI, Anthropic (Claude), Google (Gemini), Mistral, DeepSeek, Meta (Llama)
+- **Multi-Provider Support**: OpenAI, Anthropic (Claude), Google (Gemini), Mistral, DeepSeek
 - **Minimal Dependencies**: Only requires `curl`, `sed`, and `grep` - no Python, Node.js, or heavy frameworks
 - **Flexible Input**: Accept prompts from command line, files, or stdin
 - **Multiple Output Formats**: Plain text, Markdown, JSON, HTML
@@ -16,6 +16,7 @@ A powerful, minimal bash script for interacting with multiple Large Language Mod
 - **Configuration Management**: Persistent API key storage and default model settings
 - **Token Usage Tracking**: Monitor your API consumption
 - **Cross-Platform**: Works on Linux, macOS, and Windows (WSL)
+- **Model Agnostic**: Works with any model supported by the provider APIs
 
 ## 📦 Installation
 
@@ -57,7 +58,7 @@ This creates a `.chatWithLLM` file in your current directory. Edit it to add you
 ```bash
 # chatWithLLM Configuration File
 # Default model (provider:model format)
-DEFAULT_MODEL=anthropic:claude-3-opus-20240229
+DEFAULT_MODEL=anthropic:claude-3-opus
 
 # API Keys - Add your keys below
 # OpenAI
@@ -74,9 +75,6 @@ MISTRAL_API_KEY=your-mistral-key-here
 
 # DeepSeek
 DEEPSEEK_API_KEY=your-deepseek-key-here
-
-# Meta (Llama) - if using cloud API
-META_API_KEY=your-meta-key-here
 ```
 
 ## 🎯 Basic Usage
@@ -99,13 +97,15 @@ META_API_KEY=your-meta-key-here
 
 ### Model Format
 
-Always use the `provider:model` format:
+Always use the `provider:model` format. The script is model-agnostic - you can use any model name that the provider supports:
 
-- **OpenAI**: `openai:gpt-4`, `openai:gpt-3.5-turbo`
-- **Anthropic**: `anthropic:claude-3-opus-20240229`, `anthropic:claude-3-sonnet-20240229`
-- **Google**: `google:gemini-pro`, `google:gemini-pro-vision`
-- **Mistral**: `mistral:mistral-large-latest`, `mistral:mistral-medium`
-- **DeepSeek**: `deepseek:deepseek-chat`, `deepseek:deepseek-coder`
+- **OpenAI**: `openai:gpt-4`, `openai:gpt-3.5-turbo`, `openai:gpt-4-turbo`, etc.
+- **Anthropic**: `anthropic:claude-3-opus`, `anthropic:claude-3-sonnet`, `anthropic:claude-3-haiku`, etc.
+- **Google**: `google:gemini-pro`, `google:gemini-1.5-pro`, `google:gemini-1.5-flash`, etc.
+- **Mistral**: `mistral:mistral-large`, `mistral:mistral-medium`, `mistral:codestral`, etc.
+- **DeepSeek**: `deepseek:deepseek-chat`, `deepseek:deepseek-coder`, etc.
+
+*Check each provider's documentation for their current available models.*
 
 ## 📁 Working with Files
 
@@ -342,6 +342,32 @@ curl -X POST -H 'Content-type: application/json' \
     "$SLACK_WEBHOOK_URL"
 ```
 
+## 📋 Command Reference
+
+```bash
+./chatWithLLM.sh [OPTIONS] "prompt"
+./chatWithLLM.sh [OPTIONS] --file input.txt
+echo "prompt" | ./chatWithLLM.sh [OPTIONS]
+```
+
+### Options
+
+| Option | Description | Example |
+|--------|-------------|---------|
+| `-m, --model` | Model in provider:model format | `-m "openai:gpt-4"` |
+| `-f, --files` | Input text files (comma-separated) | `-f "doc1.txt,doc2.md"` |
+| `-o, --output` | Output file | `-o "response.md"` |
+| `-F, --format` | Output format (markdown, plain, json, html) | `-F json` |
+| `-t, --temperature` | Temperature (0.0-2.0, default: 0.7) | `-t 0.1` |
+| `-T, --max-tokens` | Maximum tokens (default: 4096) | `-T 8192` |
+| `--file` | Read prompt from file | `--file prompt.txt` |
+| `--stdin` | Read prompt from stdin | `--stdin` |
+| `--save` | Save output to auto-generated file | `--save` |
+| `--init` | Initialize configuration file | `--init` |
+| `-h, --help` | Show help message | `-h` |
+| `-v, --verbose` | Verbose output (show token usage) | `-v` |
+| `--debug` | Debug mode (show raw API response) | `--debug` |
+
 ## 🛠️ Troubleshooting
 
 ### Common Issues
@@ -363,6 +389,12 @@ Solution: Use the correct format, e.g., `openai:gpt-4` instead of just `gpt-4`.
 Error: File not found: document.txt
 ```
 Solution: Check file path and permissions.
+
+**Invalid Model Name**
+```bash
+Error: API call failed: HTTP 404: Model not found
+```
+Solution: Check the provider's documentation for valid model names. The script is model-agnostic, so you need to use the exact model names from the provider.
 
 ### Debug Mode
 
@@ -397,6 +429,18 @@ These are available on virtually all Unix-like systems (Linux, macOS, WSL).
 - Use `chmod 600 .chatWithLLM` to restrict config file access
 - Never commit your config file to version control
 - Consider using environment variables for API keys in production environments
+
+## 🌐 Supported Providers
+
+| Provider | Description | Authentication |
+|----------|-------------|----------------|
+| **OpenAI** | GPT models and others | Bearer token |
+| **Anthropic** | Claude models | API key header |
+| **Google** | Gemini models | API key in URL |
+| **Mistral** | Mistral AI models | Bearer token |
+| **DeepSeek** | DeepSeek models | Bearer token |
+
+*Note: The script is designed to be model-agnostic. You can use any model name that the respective provider supports. Check each provider's API documentation for their current model offerings.*
 
 ## 🤝 Contributing
 
