@@ -1,5 +1,5 @@
 #!/bin/bash
-# test_llm_cli.sh - Simple test script for chatWithLLM.sh
+# chatWithLLM_testing.sh - Simple test script for chatWithLLM.sh
 # Tests model availability by asking "What is 1+1?" and checking for "2" in response
 
 set -euo pipefail
@@ -153,10 +153,10 @@ main() {
     # Check if help was requested
     if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
         cat << 'EOF'
-test_llm_cli.sh - Simple test script for chatWithLLM.sh
+chatWithLLM_testing.sh - Simple test script for chatWithLLM.sh
 
 USAGE:
-    ./test_llm_cli.sh
+    ./chatWithLLM_testing.sh
 
 DESCRIPTION:
     Tests LLM model availability by asking "What is 1+1?" and checking 
@@ -168,7 +168,7 @@ DESCRIPTION:
     3. Add your API keys to .chatWithLLM config file
 
 EXAMPLES:
-    ./test_llm_cli.sh           # Test all configured models
+    ./chatWithLLM_testing.sh           # Test all configured models
 EOF
         return 0
     fi
