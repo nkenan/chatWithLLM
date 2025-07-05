@@ -466,6 +466,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Inspired by the need for a simple, universal CLI interface for AI models
 - Built with love for the command line interface community
 
+## 💡 Motivation
+
+This script was created out of necessity for working in restricted environments of managed web hosting services accessed via SSH. In these environments, you often can't install Python packages, Node.js modules, or other heavy dependencies, but you still need access to powerful AI capabilities for development, debugging, and automation tasks. With just bash, curl, sed, and grep - tools that are virtually guaranteed to be available on any Unix-like system - this script provides full-featured LLM access without requiring elevated privileges or package installations. It's designed for developers who need AI assistance in constrained environments where traditional AI tools simply won't work.
+
 ---
 
 **Happy AI chatting! 🚀**
