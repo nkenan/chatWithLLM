@@ -323,6 +323,17 @@ build_openai_request() {
     local escaped_content
     escaped_content=$(escape_json "$content")
     
+    # Determine which token parameter to use
+    local token_param="max_tokens"
+    local token_value="$max_tokens"
+    
+    # Simple check for models that need max_completion_tokens
+    case "$model" in
+        o4-mini*|o3-mini*)
+            token_param="max_completion_tokens"
+            ;;
+    esac
+    
     cat << EOF
 {
   "model": "$model",
@@ -332,8 +343,7 @@ build_openai_request() {
       "content": "$escaped_content"
     }
   ],
-  "max_tokens": $max_tokens,
-  "max_completion_tokens": $max_tokens,
+  "$token_param": $token_value,
   "temperature": $temperature
 }
 EOF
