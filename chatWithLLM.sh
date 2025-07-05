@@ -333,6 +333,7 @@ build_openai_request() {
     }
   ],
   "max_tokens": $max_tokens,
+  "max_completion_tokens": $max_tokens,
   "temperature": $temperature
 }
 EOF
