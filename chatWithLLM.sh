@@ -967,45 +967,19 @@ extract_json_value() {
             fi
             ;;
         "content.0.text")
-            # Extract Anthropic-style content with better handling
+            # Extract Anthropic-style content - using awk for more reliable extraction
             local content
             
-            # New approach: Use grep to isolate the content array, then extract text
-            # First, get the entire content array
-            local content_array
-            content_array=$(echo "$json" | grep -o '"content":\[[^]]*\]' | head -1)
-            
-            if [[ -n "$content_array" ]]; then
-                # Extract the text value from the first object in the array
-                # Look for "text":" and capture everything until the next "
-                content=$(echo "$content_array" | sed -n 's/.*"text":"\([^"]*\)".*/\1/p' | head -1)
-            fi
-            
-            # If the above fails, try a more aggressive pattern
-            if [[ -z "$content" ]]; then
-                # Extract everything between "text":" and the closing "
-                # This handles cases where the content might be the last field
-                content=$(echo "$json" | sed -n 's/.*"text":"\([^"]*\)"[,}].*/\1/p' | head -1)
-            fi
-            
-            # If still empty, try the most basic extraction
-            if [[ -z "$content" ]]; then
-                content=$(echo "$json" | grep -o '"text":"[^"]*"' | head -1 | sed 's/"text":"\(.*\)"/\1/')
-            fi
+            # Use awk to extract the text field value
+            content=$(echo "$json" | awk -F'"text":"' '{print $2}' | awk -F'"}]' '{print $1}')
             
             # Properly unescape the content if we found it
             if [[ -n "$content" ]]; then
-                # Method 1: Use printf %b which handles most escape sequences
-                local unescaped
-                unescaped=$(printf '%b' "$content")
-                
-                # Method 2: Additional cleanup for any remaining escapes
-                # Handle escaped quotes
-                unescaped=$(echo "$unescaped" | sed 's/\\"/"/g')
-                # Handle escaped backslashes (do this after quotes to avoid double-processing)
-                unescaped=$(echo "$unescaped" | sed 's/\\\\/\\/g')
-                
-                echo "$unescaped"
+                # Handle escape sequences
+                content=$(printf '%b' "$content")
+                # Additional cleanup for any remaining escapes
+                content=$(echo "$content" | sed 's/\\"/"/g; s/\\\\/\\/g')
+                echo "$content"
             fi
             ;;
         "candidates.0.content.parts.0.text")
