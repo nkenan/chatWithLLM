@@ -897,9 +897,6 @@ sanitize_content_for_output() {
     
     # Escape problematic characters for shell output
     printf '%s' "$content" | sed '
-        s/\\/\\\\/g
-        s/"/\\"/g
-        s/`/\\`/g
         s/\$/\\$/g
     '
 }
