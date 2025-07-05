@@ -979,14 +979,17 @@ extract_json_value() {
             fi
             # Step 3: Properly unescape the content
             if [[ -n "$content" ]]; then
-                # First handle the double-escaped sequences
-                content=$(echo "$content" | sed 's/\\\\n/\\n/g')
-                content=$(echo "$content" | sed 's/\\\\t/\\t/g')
-                # Now handle the single-escaped sequences
+                # Handle all escape sequences in the correct order
+                # First convert double-escaped quotes
+                content=$(echo "$content" | sed 's/\\\\\"/\\"/g')
+                # Then convert escaped newlines
                 content=$(echo "$content" | sed 's/\\n/\
 /g')
+                # Convert escaped tabs
                 content=$(echo "$content" | sed 's/\\t/	/g')
+                # Convert escaped quotes
                 content=$(echo "$content" | sed 's/\\"/"/g')
+                # Finally handle escaped backslashes
                 content=$(echo "$content" | sed 's/\\\\/\\/g')
                 echo "$content"
             fi
