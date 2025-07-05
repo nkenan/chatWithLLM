@@ -948,20 +948,22 @@ extract_json_value() {
             echo "$error_msg"
             ;;
         "choices.0.message.content")
-            # Extract OpenAI-style content, handling multiline content
+            # Extract OpenAI-style content - improved implementation
             local content
-            # Use a more robust approach - extract everything between "content":" and the next ",
-            content=$(echo "$json" | sed -n 's/.*"choices":\[[^]]*"content":"\([^"]*\)".*/\1/p' | head -1)
+            # Use grep to find all "content" fields, then take the last one (assistant's response)
+            content=$(echo "$json" | grep -o '"content":[[:space:]]*"[^"]*"' | tail -1 | sed 's/"content":[[:space:]]*"\(.*\)"/\1/')
             
-            # If that fails, try a broader pattern
+            # If that fails, try extracting specifically from choices array
             if [[ -z "$content" ]]; then
-                content=$(echo "$json" | grep -o '"content":"[^"]*"' | head -1 | sed 's/"content":"\(.*\)"/\1/')
+                # More permissive pattern for choices array
+                content=$(echo "$json" | sed -n 's/.*"choices"[^[]*\[[^]]*"content"[^"]*"\([^"]*\)".*/\1/p')
             fi
             
-            # Unescape JSON
+            # Unescape JSON sequences if we found content
             if [[ -n "$content" ]]; then
-                # Use printf for better escape sequence handling
-                printf '%b' "$content" | sed 's/\\"/"/g; s/\\\\/\\/g'
+                # Handle JSON escape sequences in correct order
+                content=$(echo "$content" | sed 's/\\n/\n/g; s/\\t/\t/g; s/\\"/"/g; s/\\\\/\\/g')
+                echo "$content"
             fi
             ;;
         "content.0.text")
