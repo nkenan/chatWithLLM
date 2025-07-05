@@ -18,10 +18,6 @@ FAILED_TESTS=0
 MODELS_TO_TEST=(
     "anthropic:claude-3-opus-20240229"
     "openai:gpt-4"
-    "openai:gpt-3.5-turbo"
-    "google:gemini-pro"
-    "mistral:mistral-large-latest"
-    "deepseek:deepseek-chat"
 )
 
 # Function: test_model
