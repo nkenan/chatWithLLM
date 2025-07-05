@@ -1,5 +1,5 @@
 #!/bin/bash
-# test_llm_cli.sh - Test script for chatWithLLM.sh
+# chatWithLLM_testing.sh - Test script for chatWithLLM.sh
 # Tests model availability by asking "What is 1+1?" and checking for "2" in response
 
 set -euo pipefail
@@ -199,10 +199,10 @@ show_summary() {
 # Description: Display usage information
 show_usage() {
     cat << 'EOF'
-test_llm_cli.sh - Test script for chatWithLLM.sh
+chatWithLLM_testing.sh - Test script for chatWithLLM.sh
 
 USAGE:
-    ./test_llm_cli.sh [OPTIONS]
+    ./chatWithLLM_testing.sh [OPTIONS]
 
 OPTIONS:
     -h, --help      Show this help message
@@ -219,9 +219,9 @@ DESCRIPTION:
     3. You have added your API keys to .chatWithLLM config file
 
 EXAMPLES:
-    ./test_llm_cli.sh           # Test all configured models
-    ./test_llm_cli.sh --quick   # Test only a few models
-    ./test_llm_cli.sh --verbose # Show detailed output
+    ./chatWithLLM_testing.sh           # Test all configured models
+    ./chatWithLLM_testing.sh --quick   # Test only a few models
+    ./chatWithLLM_testing.sh --verbose # Show detailed output
 EOF
 }
 
