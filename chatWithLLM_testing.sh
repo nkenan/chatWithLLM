@@ -16,7 +16,15 @@ FAILED_TESTS=0
 
 # Models to test - add/remove as needed
 MODELS_TO_TEST=(
+    "anthropic:claude-opus-4-20250514"
+    "anthropic:claude-sonnet-4-20250514"
+    "anthropic:claude-3-7-sonnet-20250219"
+    "anthropic:claude-3-5-haiku-20241022"
+    "anthropic:claude-3-5-sonnet-20241022"
+    "anthropic:claude-3-5-sonnet-20240620"
     "anthropic:claude-3-opus-20240229"
+    "anthropic:claude-3-haiku-20240307"
+    "openai:gpt-4o-mini-2024-07-18"
     "openai:gpt-4.1-mini-2025-04-14"
 )
 
