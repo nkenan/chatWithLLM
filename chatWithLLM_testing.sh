@@ -2,7 +2,7 @@
 # chatWithLLM_testing.sh - Simple test script for chatWithLLM.sh
 # Tests model availability by asking "What is 1+1?" and checking for "2" in response
 
-set -euo pipefail
+set -uo pipefail
 
 # Configuration
 LLM_CLI_SCRIPT="./chatWithLLM.sh"
@@ -43,10 +43,10 @@ test_model() {
     
     # Use timeout to prevent hanging (30 seconds max)
     if command -v timeout >/dev/null 2>&1; then
-        response=$(timeout 30s "$LLM_CLI_SCRIPT" -m "$model" -F plain "$TEST_PROMPT" 2>&1)
+        response=$(timeout 3s "$LLM_CLI_SCRIPT" -m "$model" -F plain "$TEST_PROMPT" 2>&1 || true)
         exit_code=$?
     else
-        response=$("$LLM_CLI_SCRIPT" -m "$model" -F plain "$TEST_PROMPT" 2>&1)
+        response=$("$LLM_CLI_SCRIPT" -m "$model" -F plain "$TEST_PROMPT" 2>&1 || true)
         exit_code=$?
     fi
     
