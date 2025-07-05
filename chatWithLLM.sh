@@ -148,6 +148,118 @@ get_api_key() {
 }
 
 # ============================================================================
+# MODEL-SPECIFIC PARAMETER HANDLING
+# ============================================================================
+
+# Function: get_model_specific_params
+# Description: Get model-specific parameter adjustments
+# Parameters:
+#   $1 - provider name
+#   $2 - model name
+#   $3 - requested temperature
+#   $4 - requested max_tokens
+# Returns: Sets MODEL_TEMPERATURE, MODEL_MAX_TOKENS, MODEL_USE_TEMP, MODEL_USE_MAX_TOKENS
+get_model_specific_params() {
+    local provider="$1"
+    local model="$2"
+    local requested_temp="$3"
+    local requested_max_tokens="$4"
+    
+    # Default: use all parameters as requested
+    MODEL_TEMPERATURE="$requested_temp"
+    MODEL_MAX_TOKENS="$requested_max_tokens"
+    MODEL_USE_TEMP=true
+    MODEL_USE_MAX_TOKENS=true
+    
+    case "$provider" in
+        "openai")
+            case "$model" in
+                o4-mini*|o4-*)
+                    # o4 models only support temperature=1.0
+                    MODEL_TEMPERATURE="1.0"
+                    MODEL_USE_TEMP=true
+                    ;;
+                o3-mini*|o3-*)
+                    # o3 models don't support temperature parameter
+                    MODEL_USE_TEMP=false
+                    ;;
+                gpt-4.1-nano*)
+                    # These models support temperature normally
+                    MODEL_TEMPERATURE="$requested_temp"
+                    MODEL_USE_TEMP=true
+                    ;;
+                *)
+                    # Default OpenAI models support temperature normally
+                    MODEL_TEMPERATURE="$requested_temp"
+                    MODEL_USE_TEMP=true
+                    ;;
+            esac
+            ;;
+        "anthropic")
+            # Anthropic models generally support all parameters
+            MODEL_TEMPERATURE="$requested_temp"
+            MODEL_USE_TEMP=true
+            ;;
+        "google")
+            # Google models support temperature
+            MODEL_TEMPERATURE="$requested_temp"
+            MODEL_USE_TEMP=true
+            ;;
+        "mistral")
+            # Mistral models support temperature
+            MODEL_TEMPERATURE="$requested_temp"
+            MODEL_USE_TEMP=true
+            ;;
+        "deepseek")
+            # DeepSeek models support temperature
+            MODEL_TEMPERATURE="$requested_temp"
+            MODEL_USE_TEMP=true
+            ;;
+        *)
+            # Unknown provider, use defaults
+            MODEL_TEMPERATURE="$requested_temp"
+            MODEL_USE_TEMP=true
+            ;;
+    esac
+}
+
+# Function: get_token_parameter_name
+# Description: Get the correct token parameter name for the model
+# Parameters:
+#   $1 - provider name
+#   $2 - model name
+# Returns: Token parameter name via echo
+get_token_parameter_name() {
+    local provider="$1"
+    local model="$2"
+    
+    case "$provider" in
+        "openai")
+            case "$model" in
+                o4-mini*|o3-mini*)
+                    echo "max_completion_tokens"
+                    ;;
+                *)
+                    echo "max_tokens"
+                    ;;
+            esac
+            ;;
+        "anthropic")
+            echo "max_tokens"
+            ;;
+        "google")
+            echo "maxOutputTokens"
+            ;;
+        "mistral"|"deepseek")
+            echo "max_tokens"
+            ;;
+        *)
+            echo "max_tokens"
+            ;;
+    esac
+}
+
+# ============================================================================
 # PROVIDER DETECTION AND VALIDATION
 # ============================================================================
 
@@ -287,21 +399,24 @@ build_request_body() {
     local temperature="$5"
     local extra_params="$6"
     
+    # Get model-specific parameter adjustments
+    get_model_specific_params "$provider" "$model" "$temperature" "$max_tokens"
+    
     case "$provider" in
         "openai")
-            build_openai_request "$model" "$content" "$max_tokens" "$temperature" "$extra_params"
+            build_openai_request "$model" "$content" "$MODEL_MAX_TOKENS" "$MODEL_TEMPERATURE" "$extra_params"
             ;;
         "anthropic")
-            build_anthropic_request "$model" "$content" "$max_tokens" "$temperature" "$extra_params"
+            build_anthropic_request "$model" "$content" "$MODEL_MAX_TOKENS" "$MODEL_TEMPERATURE" "$extra_params"
             ;;
         "google")
-            build_google_request "$model" "$content" "$max_tokens" "$temperature" "$extra_params"
+            build_google_request "$model" "$content" "$MODEL_MAX_TOKENS" "$MODEL_TEMPERATURE" "$extra_params"
             ;;
         "mistral")
-            build_mistral_request "$model" "$content" "$max_tokens" "$temperature" "$extra_params"
+            build_mistral_request "$model" "$content" "$MODEL_MAX_TOKENS" "$MODEL_TEMPERATURE" "$extra_params"
             ;;
         "deepseek")
-            build_deepseek_request "$model" "$content" "$max_tokens" "$temperature" "$extra_params"
+            build_deepseek_request "$model" "$content" "$MODEL_MAX_TOKENS" "$MODEL_TEMPERATURE" "$extra_params"
             ;;
         *)
             echo ""
@@ -323,30 +438,31 @@ build_openai_request() {
     local escaped_content
     escaped_content=$(escape_json "$content")
     
-    # Determine which token parameter to use
-    local token_param="max_tokens"
-    local token_value="$max_tokens"
+    # Get the correct token parameter name
+    local token_param
+    token_param=$(get_token_parameter_name "openai" "$model")
     
-    # Simple check for models that need max_completion_tokens
-    case "$model" in
-        o4-mini*|o3-mini*)
-            token_param="max_completion_tokens"
-            ;;
-    esac
-    
-    cat << EOF
-{
-  "model": "$model",
-  "messages": [
+    # Build JSON conditionally based on model support
+    local json_body="{
+  \"model\": \"$model\",
+  \"messages\": [
     {
-      "role": "user",
-      "content": "$escaped_content"
+      \"role\": \"user\",
+      \"content\": \"$escaped_content\"
     }
   ],
-  "$token_param": $token_value,
-  "temperature": $temperature
-}
-EOF
+  \"$token_param\": $max_tokens"
+    
+    # Add temperature only if the model supports it
+    if [[ "$MODEL_USE_TEMP" == true ]]; then
+        json_body+=",
+  \"temperature\": $temperature"
+    fi
+    
+    json_body+="
+}"
+    
+    echo "$json_body"
 }
 
 # Function: build_anthropic_request
@@ -363,19 +479,26 @@ build_anthropic_request() {
     local escaped_content
     escaped_content=$(escape_json "$content")
     
-    cat << EOF
-{
-  "model": "$model",
-  "max_tokens": $max_tokens,
-  "temperature": $temperature,
-  "messages": [
+    local json_body="{
+  \"model\": \"$model\",
+  \"max_tokens\": $max_tokens,
+  \"messages\": [
     {
-      "role": "user",
-      "content": "$escaped_content"
+      \"role\": \"user\",
+      \"content\": \"$escaped_content\"
     }
-  ]
-}
-EOF
+  ]"
+    
+    # Add temperature if supported
+    if [[ "$MODEL_USE_TEMP" == true ]]; then
+        json_body+=",
+  \"temperature\": $temperature"
+    fi
+    
+    json_body+="
+}"
+    
+    echo "$json_body"
 }
 
 # Function: build_google_request
@@ -392,19 +515,41 @@ build_google_request() {
     local escaped_content
     escaped_content=$(escape_json "$content")
     
-    cat << EOF
-{
-  "contents": [{
-    "parts": [{
-      "text": "$escaped_content"
+    local json_body="{
+  \"contents\": [{
+    \"parts\": [{
+      \"text\": \"$escaped_content\"
     }]
   }],
-  "generationConfig": {
-    "temperature": $temperature,
-    "maxOutputTokens": $max_tokens
+  \"generationConfig\": {"
+    
+    # Add parameters conditionally
+    local config_params=()
+    if [[ "$MODEL_USE_TEMP" == true ]]; then
+        config_params+=("\"temperature\": $temperature")
+    fi
+    if [[ "$MODEL_USE_MAX_TOKENS" == true ]]; then
+        config_params+=("\"maxOutputTokens\": $max_tokens")
+    fi
+    
+    # Join parameters with commas
+    local config_content=""
+    for i in "${!config_params[@]}"; do
+        if [[ $i -gt 0 ]]; then
+            config_content+=",
+    "
+        else
+            config_content+="
+    "
+        fi
+        config_content+="${config_params[$i]}"
+    done
+    
+    json_body+="$config_content
   }
-}
-EOF
+}"
+    
+    echo "$json_body"
 }
 
 # Function: build_mistral_request
@@ -421,19 +566,26 @@ build_mistral_request() {
     local escaped_content
     escaped_content=$(escape_json "$content")
     
-    cat << EOF
-{
-  "model": "$model",
-  "messages": [
+    local json_body="{
+  \"model\": \"$model\",
+  \"messages\": [
     {
-      "role": "user",
-      "content": "$escaped_content"
+      \"role\": \"user\",
+      \"content\": \"$escaped_content\"
     }
   ],
-  "max_tokens": $max_tokens,
-  "temperature": $temperature
-}
-EOF
+  \"max_tokens\": $max_tokens"
+    
+    # Add temperature if supported
+    if [[ "$MODEL_USE_TEMP" == true ]]; then
+        json_body+=",
+  \"temperature\": $temperature"
+    fi
+    
+    json_body+="
+}"
+    
+    echo "$json_body"
 }
 
 # Function: build_deepseek_request
@@ -450,19 +602,26 @@ build_deepseek_request() {
     local escaped_content
     escaped_content=$(escape_json "$content")
     
-    cat << EOF
-{
-  "model": "$model",
-  "messages": [
+    local json_body="{
+  \"model\": \"$model\",
+  \"messages\": [
     {
-      "role": "user",
-      "content": "$escaped_content"
+      \"role\": \"user\",
+      \"content\": \"$escaped_content\"
     }
   ],
-  "max_tokens": $max_tokens,
-  "temperature": $temperature
-}
-EOF
+  \"max_tokens\": $max_tokens"
+    
+    # Add temperature if supported
+    if [[ "$MODEL_USE_TEMP" == true ]]; then
+        json_body+=",
+  \"temperature\": $temperature"
+    fi
+    
+    json_body+="
+}"
+    
+    echo "$json_body"
 }
 
 # ============================================================================
@@ -1137,6 +1296,12 @@ SUPPORTED PROVIDERS:
     - deepseek (DeepSeek models)
     - meta (Llama models)
 
+MODEL-SPECIFIC HANDLING:
+    The script automatically handles model-specific parameter restrictions:
+    - OpenAI o4-mini models: Uses temperature=1.0 (only supported value)
+    - OpenAI o3-mini models: Omits temperature parameter (not supported)
+    - Uses appropriate token parameter names per model
+
 DEPENDENCIES:
     - bash, curl, sed, grep (minimal requirements)
     - No support for images, PDFs, or advanced text encoding
@@ -1409,6 +1574,8 @@ main() {
             echo "=== DEBUG INFORMATION ===" >&2
             echo "Provider: $PROVIDER" >&2
             echo "Model: $MODEL" >&2
+            echo "Temperature used: ${MODEL_TEMPERATURE:-N/A}" >&2
+            echo "Temperature supported: ${MODEL_USE_TEMP:-N/A}" >&2
             echo "Raw API Response:" >&2
             echo "$RESPONSE_RAW" >&2
             echo "=========================" >&2
