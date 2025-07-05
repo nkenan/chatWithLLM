@@ -16,7 +16,6 @@ FAILED_TESTS=0
 
 # Models to test - add/remove as needed
 MODELS_TO_TEST=(
-    "openai:gpt-4.1-mini-2025-04-14"
     "openai:gpt-4o-mini-2024-07-18"
     "anthropic:claude-opus-4-20250514"
     "anthropic:claude-sonnet-4-20250514"
