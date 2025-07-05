@@ -967,18 +967,23 @@ extract_json_value() {
             fi
             ;;
         "content.0.text")
-            # Extract Anthropic-style content - using awk for more reliable extraction
+            # Extract Anthropic-style content - using only sed/grep
             local content
-            
-            # Use awk to extract the text field value
-            content=$(echo "$json" | awk -F'"text":"' '{print $2}' | awk -F'"}]' '{print $1}')
-            
-            # Properly unescape the content if we found it
+            # Step 1: Extract the content array section
+            local content_section
+            content_section=$(echo "$json" | grep -o '"content":\[[^]]*\]' | head -1)
+            # Step 2: Extract just the text value
+            if [[ -n "$content_section" ]]; then
+                content=$(echo "$content_section" | sed 's/.*"text":"//')
+                content=$(echo "$content" | sed 's/"}]$//')
+            fi
+            # Step 3: Properly unescape the content
             if [[ -n "$content" ]]; then
-                # Handle escape sequences
-                content=$(printf '%b' "$content")
-                # Additional cleanup for any remaining escapes
-                content=$(echo "$content" | sed 's/\\"/"/g; s/\\\\/\\/g')
+                content=$(echo "$content" | sed 's/\\n/\
+/g')
+                content=$(echo "$content" | sed 's/\\t/	/g')
+                content=$(echo "$content" | sed 's/\\"/"/g')
+                content=$(echo "$content" | sed 's/\\\\/\\/g')
                 echo "$content"
             fi
             ;;
