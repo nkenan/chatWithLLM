@@ -1147,7 +1147,7 @@ chatWithLLM.sh - Universal LLM CLI Interface (Minimal Version)
 
 USAGE:
     ./chatWithLLM.sh [OPTIONS] "prompt"
-    ./chatWithLLM.sh [OPTIONS] --file input.txt
+    ./chatWithLLM.sh [OPTIONS] --prompt-file input.txt
     echo "prompt" | ./chatWithLLM.sh [OPTIONS]
 
 OPTIONS:
@@ -1158,13 +1158,13 @@ OPTIONS:
     -F, --format FORMAT     Output format (markdown, plain, json, html)
     -t, --temperature NUM   Temperature (0.0-2.0, default: 0.7)
     -T, --max-tokens NUM    Maximum tokens (default: 4096)
-    --file FILE            Read prompt from file
-    --stdin                Read prompt from stdin
-    --save                 Save output to file
-    --init                 Initialize configuration file
-    -h, --help             Show this help message
-    -v, --verbose          Verbose output
-    --debug                Debug mode (show raw API response)
+    --prompt-file FILE, -pf FILE  Read prompt from file
+    --stdin                 Read prompt from stdin
+    --save                  Save output to file
+    --init                  Initialize configuration file
+    -h, --help              Show this help message
+    -v, --verbose           Verbose output
+    --debug                 Debug mode (show raw API response)
 
 EXAMPLES:
     # Basic usage with default model from config
@@ -1181,7 +1181,8 @@ EXAMPLES:
     ./chatWithLLM.sh -F html --save "Create a technical report"
     
     # Read from file
-    ./chatWithLLM.sh --file prompt.txt -m openai:gpt-4
+    ./chatWithLLM.sh --prompt-file prompt.txt -m openai:gpt-4
+    ./chatWithLLM.sh -pf prompt.txt -m openai:gpt-4
     
     # Pipe input
     echo "Translate to French: Hello world" | ./chatWithLLM.sh -m google:gemini-pro
@@ -1369,7 +1370,7 @@ main() {
                 max_tokens="$2"
                 shift 2
                 ;;
-            --file)
+            --prompt-file|-pf)
                 read_from_file="$2"
                 shift 2
                 ;;
