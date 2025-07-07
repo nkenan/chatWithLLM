@@ -1067,25 +1067,37 @@ extract_json_value() {
         "candidates.0.content.parts.0.text")
             # Extract Google Gemini content - FIXED VERSION
             local content
+    
+            # Method 1: Extrahiere den gesamten text-Wert inklusive escaped quotes
+            # Verwende ein robusteres Pattern das escaped quotes berücksichtigt
+            content=$(echo "$json" | sed -n 's/.*"text"[[:space:]]*:[[:space:]]*"\(.*\)"}]$/\1/p' | head -1)
             
-            # Method 1: Direct extraction from the nested structure
-            content=$(echo "$json" | sed -n 's/.*"candidates"[[:space:]]*:[[:space:]]*\[[^]]*"content"[[:space:]]*:[[:space:]]*{[^}]*"parts"[[:space:]]*:[[:space:]]*\[[^]]*"text"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
-            
-            # Method 2: If that fails, try a simpler approach looking for text field
+            # Method 2: Fallback - suche nach dem text-Feld und extrahiere bis zum unescaped quote
             if [[ -z "$content" ]]; then
-                # Find the text field within the parts array
-                content=$(echo "$json" | grep -o '"text"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/"text"[[:space:]]*:[[:space:]]*"\([^"]*\)"/\1/')
+                # Verwende grep und sed um den kompletten text-Inhalt zu extrahieren
+                content=$(echo "$json" | grep -o '"text"[[:space:]]*:[[:space:]]*".*"' | head -1 | sed 's/"text"[[:space:]]*:[[:space:]]*"//' | sed 's/"$//')
             fi
             
-            # Method 3: Even simpler - just find any text field and assume it's the response
+            # Method 3: Python-ähnlicher Ansatz mit awk für komplexe JSON
             if [[ -z "$content" ]]; then
-                content=$(echo "$json" | sed -n 's/.*"text"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+                content=$(echo "$json" | awk -F'"text":' '{if(NF>1) print $2}' | awk -F'"}]' '{print $1}' | sed 's/^[[:space:]]*"//' | head -1)
             fi
             
-            # Unescape JSON sequences if we found content
+            # Unescape JSON sequences wenn content gefunden wurde
             if [[ -n "$content" ]]; then
-                # Handle JSON escape sequences properly
-                echo "$content" | sed 's/\\n/\n/g; s/\\t/\t/g; s/\\"/"/g; s/\\\\/\\/g'
+                # Handle JSON escape sequences in correct order
+                # Erst doppelt-escaped quotes
+                content=$(echo "$content" | sed 's/\\\\"/\\"/g')
+                # Dann escaped newlines zu echten newlines
+                content=$(echo "$content" | sed 's/\\n/\
+        /g')
+                # Escaped tabs zu echten tabs
+                content=$(echo "$content" | sed 's/\\t/	/g')
+                # Escaped quotes zu normalen quotes
+                content=$(echo "$content" | sed 's/\\"/"/g')
+                # Zuletzt escaped backslashes
+                content=$(echo "$content" | sed 's/\\\\/\\/g')
+                echo "$content"
             fi
             ;;
         "usage.prompt_tokens"|"usage.input_tokens")
