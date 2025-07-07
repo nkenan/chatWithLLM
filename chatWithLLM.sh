@@ -1065,18 +1065,27 @@ extract_json_value() {
             fi
             ;;
         "candidates.0.content.parts.0.text")
-            # Extract Google Gemini content
+            # Extract Google Gemini content - FIXED VERSION
             local content
-            # Similar approach to Anthropic
-            content=$(echo "$json" | sed -n 's/.*"candidates":\[[^]]*"text":"\([^"]*\)".*/\1/p' | head -1)
             
+            # Method 1: Direct extraction from the nested structure
+            content=$(echo "$json" | sed -n 's/.*"candidates"[[:space:]]*:[[:space:]]*\[[^]]*"content"[[:space:]]*:[[:space:]]*{[^}]*"parts"[[:space:]]*:[[:space:]]*\[[^]]*"text"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+            
+            # Method 2: If that fails, try a simpler approach looking for text field
             if [[ -z "$content" ]]; then
-                content=$(echo "$json" | grep -o '"text":"[^"]*"' | head -1 | sed 's/"text":"\(.*\)"/\1/')
+                # Find the text field within the parts array
+                content=$(echo "$json" | grep -o '"text"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/"text"[[:space:]]*:[[:space:]]*"\([^"]*\)"/\1/')
             fi
             
-            # Unescape
+            # Method 3: Even simpler - just find any text field and assume it's the response
+            if [[ -z "$content" ]]; then
+                content=$(echo "$json" | sed -n 's/.*"text"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+            fi
+            
+            # Unescape JSON sequences if we found content
             if [[ -n "$content" ]]; then
-                printf '%b' "$content" | sed 's/\\"/"/g; s/\\\\/\\/g'
+                # Handle JSON escape sequences properly
+                echo "$content" | sed 's/\\n/\n/g; s/\\t/\t/g; s/\\"/"/g; s/\\\\/\\/g'
             fi
             ;;
         "usage.prompt_tokens"|"usage.input_tokens")
