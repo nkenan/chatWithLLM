@@ -8,7 +8,7 @@ A powerful, minimal bash script for interacting with multiple Large Language Mod
 
 ## 🚀 Features
 
-- **Multi-Provider Support**: OpenAI, Anthropic (Claude), Google (Gemini), Mistral, DeepSeek
+- **Multi-Provider Support**: OpenAI, Anthropic (Claude), Google (Gemini), DeepSeek
 - **Minimal Dependencies**: Only requires `curl`, `sed`, and `grep` - no Python, Node.js, or heavy frameworks
 - **Flexible Input**: Accept prompts from command line, files, or stdin
 - **Multiple Output Formats**: Plain text, Markdown, JSON, HTML
@@ -17,6 +17,7 @@ A powerful, minimal bash script for interacting with multiple Large Language Mod
 - **Token Usage Tracking**: Monitor your API consumption
 - **Cross-Platform**: Works on Linux, macOS, and Windows (WSL)
 - **Model Agnostic**: Works with any model supported by the provider APIs
+- **Smart Model Handling**: Automatically handles model-specific parameter restrictions
 
 ## 📦 Installation
 
@@ -58,7 +59,7 @@ This creates a `.chatWithLLM` file in your current directory. Edit it to add you
 ```bash
 # chatWithLLM Configuration File
 # Default model (provider:model format)
-DEFAULT_MODEL=anthropic:claude-3-opus
+DEFAULT_MODEL=anthropic:claude-3-opus-20240229
 
 # API Keys - Add your keys below
 # OpenAI
@@ -69,9 +70,6 @@ ANTHROPIC_API_KEY=sk-ant-your-anthropic-key-here
 
 # Google (Gemini)
 GOOGLE_API_KEY=your-google-api-key-here
-
-# Mistral
-MISTRAL_API_KEY=your-mistral-key-here
 
 # DeepSeek
 DEEPSEEK_API_KEY=your-deepseek-key-here
@@ -89,7 +87,7 @@ DEEPSEEK_API_KEY=your-deepseek-key-here
 ./chatWithLLM.sh -m "openai:gpt-4" "Write a haiku about coding"
 
 # Use Claude for creative writing
-./chatWithLLM.sh -m "anthropic:claude-3-opus" "Write a short story about a time-traveling programmer"
+./chatWithLLM.sh -m "anthropic:claude-3-opus-20240229" "Write a short story about a time-traveling programmer"
 
 # Use Gemini for analysis
 ./chatWithLLM.sh -m "google:gemini-pro" "What are the pros and cons of renewable energy?"
@@ -99,13 +97,28 @@ DEEPSEEK_API_KEY=your-deepseek-key-here
 
 Always use the `provider:model` format. The script is model-agnostic - you can use any model name that the provider supports:
 
-- **OpenAI**: `openai:gpt-4`, `openai:gpt-3.5-turbo`, `openai:gpt-4-turbo`, etc.
-- **Anthropic**: `anthropic:claude-3-opus`, `anthropic:claude-3-sonnet`, `anthropic:claude-3-haiku`, etc.
+- **OpenAI**: `openai:gpt-4`, `openai:gpt-3.5-turbo`, `openai:gpt-4-turbo`, `openai:o4-mini`, `openai:o3-mini`, etc.
+- **Anthropic**: `anthropic:claude-3-opus-20240229`, `anthropic:claude-3-sonnet-20240229`, `anthropic:claude-3-haiku-20240307`, etc.
 - **Google**: `google:gemini-pro`, `google:gemini-1.5-pro`, `google:gemini-1.5-flash`, etc.
-- **Mistral**: `mistral:mistral-large`, `mistral:mistral-medium`, `mistral:codestral`, etc.
 - **DeepSeek**: `deepseek:deepseek-chat`, `deepseek:deepseek-coder`, etc.
 
 *Check each provider's documentation for their current available models.*
+
+### Smart Model Parameter Handling
+
+The script automatically handles model-specific parameter restrictions:
+
+- **OpenAI o4 models** (o4-mini, etc.): Only supports temperature=1.0
+- **OpenAI o3 models** (o3-mini, etc.): Temperature parameter not supported
+- **Anthropic Claude models**: Full parameter support
+- **Google Gemini models**: Full parameter support
+- **DeepSeek models**: Full parameter support
+
+The script also uses the correct token parameter names:
+- **o4-mini and o3-mini**: Uses `max_completion_tokens`
+- **Other OpenAI models**: Uses `max_tokens`
+- **Google models**: Uses `maxOutputTokens`
+- **All others**: Uses `max_tokens`
 
 ## 📁 Working with Files
 
@@ -122,7 +135,7 @@ Always use the `provider:model` format. The script is model-agnostic - you can u
 ./chatWithLLM.sh -f "main.py,utils.py" "Review this Python code for bugs and improvements"
 
 # Document analysis
-./chatWithLLM.sh -f "report.txt" -m "anthropic:claude-3-opus" "Extract key insights and create an executive summary"
+./chatWithLLM.sh -f "report.txt" -m "anthropic:claude-3-opus-20240229" "Extract key insights and create an executive summary"
 ```
 
 ### Reading Prompts from Files
@@ -130,10 +143,13 @@ Always use the `provider:model` format. The script is model-agnostic - you can u
 ```bash
 # Read prompt from a file
 echo "Explain machine learning algorithms" > prompt.txt
-./chatWithLLM.sh --file prompt.txt -m "openai:gpt-4"
+./chatWithLLM.sh --prompt-file prompt.txt -m "openai:gpt-4"
+
+# Short form
+./chatWithLLM.sh -pf prompt.txt -m "openai:gpt-4"
 
 # Combine file prompt with file analysis
-./chatWithLLM.sh --file analysis_prompt.txt -f "data.csv,report.txt"
+./chatWithLLM.sh --prompt-file analysis_prompt.txt -f "data.csv,report.txt"
 ```
 
 ## 🔄 Input Methods
@@ -145,7 +161,8 @@ echo "Explain machine learning algorithms" > prompt.txt
 
 ### From File
 ```bash
-./chatWithLLM.sh --file prompt.txt
+./chatWithLLM.sh --prompt-file prompt.txt
+./chatWithLLM.sh -pf prompt.txt
 ```
 
 ### From Stdin (Pipe)
@@ -160,6 +177,9 @@ git log --oneline -10 | ./chatWithLLM.sh "Summarize these git commits"
 
 # From curl
 curl -s https://api.github.com/users/octocat | ./chatWithLLM.sh "Explain this JSON data"
+
+# Explicit stdin flag
+./chatWithLLM.sh --stdin -m "openai:gpt-4"
 ```
 
 ## 📄 Output Formats
@@ -238,7 +258,7 @@ curl -s https://api.github.com/users/octocat | ./chatWithLLM.sh "Explain this JS
 
 ```bash
 # Code review
-./chatWithLLM.sh -f "src/main.js" -m "anthropic:claude-3-opus" "Review this JavaScript code for security issues and best practices"
+./chatWithLLM.sh -f "src/main.js" -m "anthropic:claude-3-opus-20240229" "Review this JavaScript code for security issues and best practices"
 
 # Generate documentation
 ./chatWithLLM.sh -f "api.py" "Generate comprehensive API documentation for this Python file"
@@ -293,7 +313,7 @@ git diff | ./chatWithLLM.sh "Explain what this git diff does and if there are an
 
 ```bash
 # Concept explanation
-./chatWithLLM.sh -m "anthropic:claude-3-opus" "Explain dependency injection in software development with practical examples"
+./chatWithLLM.sh -m "anthropic:claude-3-opus-20240229" "Explain dependency injection in software development with practical examples"
 
 # Code explanation
 ./chatWithLLM.sh -f "complex_algorithm.py" "Explain this algorithm step by step for a beginner programmer"
@@ -320,7 +340,7 @@ git diff --cached | ./chatWithLLM.sh -T 50 "Generate a concise git commit messag
 # In your GitHub Actions or GitLab CI
 - name: AI Code Review
   run: |
-    git diff HEAD~1 | ./chatWithLLM.sh -m "anthropic:claude-3-opus" "Review this code diff for potential issues" > review.md
+    git diff HEAD~1 | ./chatWithLLM.sh -m "anthropic:claude-3-opus-20240229" "Review this code diff for potential issues" > review.md
 ```
 
 ### Alfred Workflow (macOS)
@@ -346,7 +366,8 @@ curl -X POST -H 'Content-type: application/json' \
 
 ```bash
 ./chatWithLLM.sh [OPTIONS] "prompt"
-./chatWithLLM.sh [OPTIONS] --file input.txt
+./chatWithLLM.sh [OPTIONS] --prompt-file input.txt
+./chatWithLLM.sh [OPTIONS] -pf input.txt
 echo "prompt" | ./chatWithLLM.sh [OPTIONS]
 ```
 
@@ -360,7 +381,7 @@ echo "prompt" | ./chatWithLLM.sh [OPTIONS]
 | `-F, --format` | Output format (markdown, plain, json, html) | `-F json` |
 | `-t, --temperature` | Temperature (0.0-2.0, default: 0.7) | `-t 0.1` |
 | `-T, --max-tokens` | Maximum tokens (default: 4096) | `-T 8192` |
-| `--file` | Read prompt from file | `--file prompt.txt` |
+| `--prompt-file, -pf` | Read prompt from file | `--prompt-file prompt.txt` |
 | `--stdin` | Read prompt from stdin | `--stdin` |
 | `--save` | Save output to auto-generated file | `--save` |
 | `--init` | Initialize configuration file | `--init` |
@@ -384,6 +405,12 @@ Error: Model must be specified in provider:model format
 ```
 Solution: Use the correct format, e.g., `openai:gpt-4` instead of just `gpt-4`.
 
+**Configuration File Not Found**
+```bash
+.chatWithLLM: Configuration file not found. Run with --init to create a configuration file.
+```
+Solution: Run `./chatWithLLM.sh --init` to create the configuration file.
+
 **File Not Found**
 ```bash
 Error: File not found: document.txt
@@ -396,13 +423,25 @@ Error: API call failed: HTTP 404: Model not found
 ```
 Solution: Check the provider's documentation for valid model names. The script is model-agnostic, so you need to use the exact model names from the provider.
 
+**Temperature Parameter Issues**
+The script automatically handles model-specific temperature restrictions:
+- For o4 models, temperature is automatically set to 1.0
+- For o3 models, temperature parameter is omitted
+- No manual adjustment needed
+
 ### Debug Mode
 
-Use debug mode to see raw API responses:
+Use debug mode to see raw API responses and model parameter handling:
 
 ```bash
 ./chatWithLLM.sh --debug "test prompt"
 ```
+
+This will show:
+- Provider and model being used
+- Temperature value actually sent to API
+- Whether temperature is supported by the model
+- Raw API response
 
 ### Verbose Mode
 
@@ -432,13 +471,12 @@ These are available on virtually all Unix-like systems (Linux, macOS, WSL).
 
 ## 🌐 Supported Providers
 
-| Provider | Description | Authentication |
-|----------|-------------|----------------|
-| **OpenAI** | GPT models and others | Bearer token |
-| **Anthropic** | Claude models | API key header |
-| **Google** | Gemini models | API key in URL |
-| **Mistral** | Mistral AI models | Bearer token |
-| **DeepSeek** | DeepSeek models | Bearer token |
+| Provider | Description | Authentication | Special Features |
+|----------|-------------|----------------|------------------|
+| **OpenAI** | GPT models and others | Bearer token | Smart parameter handling for o3/o4 models |
+| **Anthropic** | Claude models | API key header | Full parameter support |
+| **Google** | Gemini models | API key in URL | Full parameter support |
+| **DeepSeek** | DeepSeek models | Bearer token | Full parameter support |
 
 *Note: The script is designed to be model-agnostic. You can use any model name that the respective provider supports. Check each provider's API documentation for their current model offerings.*
 
