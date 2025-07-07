@@ -1,6 +1,6 @@
 #!/bin/bash
 # chatWithLLM.sh - Universal LLM CLI Interface (Minimal Version)
-# Supports: OpenAI, Google (Gemini), Meta (Llama), Mistral, DeepSeek, Anthropic
+# Supports: OpenAI, Google (Gemini), DeepSeek, Anthropic
 # Dependencies: curl, sed, grep only
 
 set -euo pipefail
@@ -22,9 +22,7 @@ declare -A PROVIDER_ENDPOINTS=(
     ["openai"]="https://api.openai.com/v1/chat/completions"
     ["anthropic"]="https://api.anthropic.com/v1/messages"
     ["google"]="https://generativelanguage.googleapis.com/v1beta/models"
-    ["mistral"]="https://api.mistral.ai/v1/chat/completions"
     ["deepseek"]="https://api.deepseek.com/v1/chat/completions"
-    ["meta"]="https://api.meta.com/v1/chat/completions"
 )
 
 # Global return variables for functions
@@ -60,14 +58,8 @@ ANTHROPIC_API_KEY=
 # Google (Gemini)
 GOOGLE_API_KEY=
 
-# Mistral
-MISTRAL_API_KEY=
-
 # DeepSeek
 DEEPSEEK_API_KEY=
-
-# Meta (Llama) - if using cloud API
-META_API_KEY=
 "
     
     echo "$config_template" > "$CONFIG_FILE"
@@ -132,14 +124,8 @@ get_api_key() {
         "google")
             echo "${GOOGLE_API_KEY:-}"
             ;;
-        "mistral")
-            echo "${MISTRAL_API_KEY:-}"
-            ;;
         "deepseek")
             echo "${DEEPSEEK_API_KEY:-}"
-            ;;
-        "meta")
-            echo "${META_API_KEY:-}"
             ;;
         *)
             echo ""
@@ -205,11 +191,6 @@ get_model_specific_params() {
             MODEL_TEMPERATURE="$requested_temp"
             MODEL_USE_TEMP=true
             ;;
-        "mistral")
-            # Mistral models support temperature
-            MODEL_TEMPERATURE="$requested_temp"
-            MODEL_USE_TEMP=true
-            ;;
         "deepseek")
             # DeepSeek models support temperature
             MODEL_TEMPERATURE="$requested_temp"
@@ -250,7 +231,7 @@ get_token_parameter_name() {
         "google")
             echo "maxOutputTokens"
             ;;
-        "mistral"|"deepseek")
+        "deepseek")
             echo "max_tokens"
             ;;
         *)
@@ -289,7 +270,7 @@ validate_provider() {
     local provider="$1"
     
     case "$provider" in
-        openai|anthropic|google|mistral|deepseek|meta)
+        openai|anthropic|google|deepseek)
             return 0
             ;;
         *)
@@ -411,9 +392,6 @@ build_request_body() {
             ;;
         "google")
             build_google_request "$model" "$content" "$MODEL_MAX_TOKENS" "$MODEL_TEMPERATURE" "$extra_params"
-            ;;
-        "mistral")
-            build_mistral_request "$model" "$content" "$MODEL_MAX_TOKENS" "$MODEL_TEMPERATURE" "$extra_params"
             ;;
         "deepseek")
             build_deepseek_request "$model" "$content" "$MODEL_MAX_TOKENS" "$MODEL_TEMPERATURE" "$extra_params"
@@ -552,42 +530,6 @@ build_google_request() {
     echo "$json_body"
 }
 
-# Function: build_mistral_request
-# Description: Build Mistral-specific request body
-# Parameters: Same as build_request_body
-# Returns: JSON string via echo
-build_mistral_request() {
-    local model="$1"
-    local content="$2"
-    local max_tokens="$3"
-    local temperature="$4"
-    local extra_params="$5"
-    
-    local escaped_content
-    escaped_content=$(escape_json "$content")
-    
-    local json_body="{
-  \"model\": \"$model\",
-  \"messages\": [
-    {
-      \"role\": \"user\",
-      \"content\": \"$escaped_content\"
-    }
-  ],
-  \"max_tokens\": $max_tokens"
-    
-    # Add temperature if supported
-    if [[ "$MODEL_USE_TEMP" == true ]]; then
-        json_body+=",
-  \"temperature\": $temperature"
-    fi
-    
-    json_body+="
-}"
-    
-    echo "$json_body"
-}
-
 # Function: build_deepseek_request
 # Description: Build DeepSeek-specific request body
 # Parameters: Same as build_request_body
@@ -658,7 +600,7 @@ make_api_call() {
     
     # Add provider-specific headers
     case "$provider" in
-        "openai"|"deepseek"|"mistral")
+        "openai"|"deepseek")
             curl_args+=("-H" "Authorization: Bearer $api_key")
             ;;
         "anthropic")
@@ -666,9 +608,6 @@ make_api_call() {
             ;;
         "google")
             # Google uses API key in URL, no auth header needed
-            ;;
-        "meta")
-            curl_args+=("-H" "Authorization: Bearer $api_key")
             ;;
     esac
     
@@ -739,9 +678,6 @@ parse_response() {
             ;;
         "google")
             parse_google_response "$raw_response"
-            ;;
-        "mistral")
-            parse_mistral_response "$raw_response"
             ;;
         "deepseek")
             parse_deepseek_response "$raw_response"
@@ -841,35 +777,6 @@ parse_google_response() {
     local prompt_tokens completion_tokens
     prompt_tokens=$(extract_json_value "$raw_response" "usageMetadata.promptTokenCount")
     completion_tokens=$(extract_json_value "$raw_response" "usageMetadata.candidatesTokenCount")
-    
-    if [[ -n "$prompt_tokens" && -n "$completion_tokens" ]]; then
-        RESPONSE_USAGE="Tokens used: $prompt_tokens prompt + $completion_tokens completion = $((prompt_tokens + completion_tokens)) total"
-    fi
-}
-
-# Function: parse_mistral_response
-# Description: Parse Mistral response format
-# Parameters:
-#   $1 - raw JSON response
-# Returns: Sets global response variables
-parse_mistral_response() {
-    local raw_response="$1"
-    
-    # Similar to OpenAI format
-    local error_message
-    error_message=$(extract_json_value "$raw_response" "error.message")
-    
-    if [[ -n "$error_message" ]]; then
-        RESPONSE_ERROR="$error_message"
-        RESPONSE_CONTENT=""
-        return
-    fi
-    
-    RESPONSE_CONTENT=$(extract_json_value "$raw_response" "choices.0.message.content")
-    
-    local prompt_tokens completion_tokens
-    prompt_tokens=$(extract_json_value "$raw_response" "usage.prompt_tokens")
-    completion_tokens=$(extract_json_value "$raw_response" "usage.completion_tokens")
     
     if [[ -n "$prompt_tokens" && -n "$completion_tokens" ]]; then
         RESPONSE_USAGE="Tokens used: $prompt_tokens prompt + $completion_tokens completion = $((prompt_tokens + completion_tokens)) total"
@@ -1292,9 +1199,7 @@ SUPPORTED PROVIDERS:
     - openai (OpenAI models)
     - anthropic (Claude models)  
     - google (Gemini models)
-    - mistral (Mistral models)
     - deepseek (DeepSeek models)
-    - meta (Llama models)
 
 MODEL-SPECIFIC HANDLING:
     The script automatically handles model-specific parameter restrictions:
