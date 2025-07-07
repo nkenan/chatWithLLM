@@ -1103,15 +1103,17 @@ extract_json_value() {
             fi
             ;;
         "usageMetadata.promptTokenCount")
+            # FIXED: Use a simpler pattern that doesn't rely on matching nested braces
             local tokens
-            tokens=$(echo "$json" | sed -n 's/.*"usageMetadata"[[:space:]]*:[[:space:]]*{[^}]*"promptTokenCount"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' | head -1)
+            tokens=$(echo "$json" | grep -o '"promptTokenCount"[[:space:]]*:[[:space:]]*[0-9]*' | sed 's/"promptTokenCount"[[:space:]]*:[[:space:]]*\([0-9]*\)/\1/' | head -1)
             if [[ "$tokens" =~ ^[0-9]+$ ]]; then
                 echo "$tokens"
             fi
             ;;
         "usageMetadata.candidatesTokenCount")
+            # FIXED: Use a simpler pattern that doesn't rely on matching nested braces
             local tokens
-            tokens=$(echo "$json" | sed -n 's/.*"usageMetadata"[[:space:]]*:[[:space:]]*{[^}]*"candidatesTokenCount"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' | head -1)
+            tokens=$(echo "$json" | grep -o '"candidatesTokenCount"[[:space:]]*:[[:space:]]*[0-9]*' | sed 's/"candidatesTokenCount"[[:space:]]*:[[:space:]]*\([0-9]*\)/\1/' | head -1)
             if [[ "$tokens" =~ ^[0-9]+$ ]]; then
                 echo "$tokens"
             fi
