@@ -16,9 +16,15 @@ FAILED_TESTS=0
 
 # Models to test - add/remove as needed
 MODELS_TO_TEST=(
+    "deepseek:deepseek-chat"
+    "deepseek:deepseek-reasoner"
     "google:gemini-2.5-flash-lite-preview-06-17"
     "google:gemini-2.5-flash"
     "google:gemini-2.5-pro"
+    "google:gemini-2.0-flash"
+    "google:gemini-2.0-flash-lite"
+    "google:gemini-1.5-flash"
+    "google:gemini-1.5-flash-8b"
     "openai:o4-mini-2025-04-16"
     "openai:o3-2025-04-16"
     "openai:o3-mini-2025-01-31"
